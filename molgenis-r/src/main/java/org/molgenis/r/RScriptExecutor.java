@@ -58,7 +58,8 @@ public class RScriptExecutor
 		{
 			// Create r process
 			logger.info("Running r script [" + script.getAbsolutePath() + "]");
-			Process process = Runtime.getRuntime().exec(rScriptExecutable + " " + script.getAbsolutePath());
+			Process process = Runtime.getRuntime().exec(rScriptExecutable + " " + script.getAbsolutePath(), new String[0], script.getParentFile());
+			
 
 			// Capture the error output
 			final StringBuilder sb = new StringBuilder();
