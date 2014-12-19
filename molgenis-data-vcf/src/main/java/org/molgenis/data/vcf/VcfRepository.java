@@ -99,7 +99,7 @@ public class VcfRepository extends AbstractRepository
 			public Entity next()
 			{
 
-				Entity entity = new MapEntity();
+				Entity entity = new MapEntity(getEntityMetaData());
 				try
 				{
 					VcfRecord vcfRecord = vcfRecordIterator.next();
@@ -174,6 +174,7 @@ public class VcfRepository extends AbstractRepository
 				{
 					logger.error("Unable to load VCF metadata. " + e.getStackTrace());
 				}
+				
 				return entity;
 			}
 
@@ -221,6 +222,7 @@ public class VcfRepository extends AbstractRepository
 						MolgenisFieldTypes.FieldTypeEnum.STRING));
 				DefaultAttributeMetaData idAttributeMetaData = new DefaultAttributeMetaData(INTERNAL_ID,
 						MolgenisFieldTypes.FieldTypeEnum.STRING);
+				idAttributeMetaData.setNillable(false);
 				idAttributeMetaData.setIdAttribute(true);
 				idAttributeMetaData.setVisible(false);
 				entityMetaData.addAttributeMetaData(idAttributeMetaData);
