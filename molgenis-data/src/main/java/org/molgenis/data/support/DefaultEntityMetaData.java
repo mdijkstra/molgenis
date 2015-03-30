@@ -1,9 +1,10 @@
 package org.molgenis.data.support;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.EditableEntityMetaData;
@@ -11,6 +12,8 @@ import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.Package;
 import org.molgenis.util.CaseInsensitiveLinkedHashMap;
+
+import com.google.common.collect.Lists;
 
 public class DefaultEntityMetaData extends AbstractEntityMetaData implements EditableEntityMetaData
 {
@@ -22,6 +25,7 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 	private String description;
 	private EntityMetaData extends_;
 	private Package pack;
+	private String backend;
 
 	public DefaultEntityMetaData(String simpleName)
 	{
@@ -55,7 +59,7 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 		this(entityMetaData);
 		this.simpleName = newName;
 	}
-	
+
 	/**
 	 * Copy-constructor
 	 * 
@@ -71,15 +75,12 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 		this.description = entityMetaData.getDescription();
 		EntityMetaData extends_ = entityMetaData.getExtends();
 		this.extends_ = extends_ != null ? new DefaultEntityMetaData(extends_) : null;
-		// deep copy attributes
-		// TODO: Fails dramatically for self-referencing entities.
+		this.backend = entityMetaData.getBackend();
+
 		Iterable<AttributeMetaData> attributes = entityMetaData.getAttributes();
 		if (attributes != null)
 		{
-			for (AttributeMetaData attributeMetaData : attributes)
-			{
-				addAttributeMetaData(new DefaultAttributeMetaData(attributeMetaData));
-			}
+			addAllAttributeMetaData(attributes);
 		}
 		AttributeMetaData idAttribute = entityMetaData.getIdAttribute();
 		if (idAttribute != null)
@@ -113,6 +114,19 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 	}
 
 	@Override
+	public String getBackend()
+	{
+		return backend;
+	}
+
+	@Override
+	public EditableEntityMetaData setBackend(String backend)
+	{
+		this.backend = backend;
+		return this;
+	}
+
+	@Override
 	public void addAttributeMetaData(AttributeMetaData attributeMetaData)
 	{
 		if (attributeMetaData == null) throw new IllegalArgumentException("AttributeMetaData cannot be null");
@@ -126,26 +140,19 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 
 	public void removeAttributeMetaData(AttributeMetaData attributeMetaData)
 	{
-		this.attributes.remove(attributeMetaData.getName());
+		attributes.remove(attributeMetaData.getName());
 	}
 
-	public void addAllAttributeMetaData(List<AttributeMetaData> attributeMetaDataList)
+	public void addAllAttributeMetaData(Iterable<AttributeMetaData> attributeMetaDataList)
 	{
-		for (AttributeMetaData attributeMetaData : attributeMetaDataList)
-		{
-			if (attributeMetaData == null) throw new IllegalArgumentException("AttributeMetaData cannot be null");
-			if (attributeMetaData.getName() == null) throw new IllegalArgumentException(
-					"Name of the AttributeMetaData cannot be null");
-
-			attributes.put(attributeMetaData.getName().toLowerCase(), attributeMetaData);
-		}
+		attributeMetaDataList.forEach(this::addAttributeMetaData);
 	}
 
 	@Override
 	public List<AttributeMetaData> getAttributes()
 	{
-		List<AttributeMetaData> result = new ArrayList<AttributeMetaData>();
-		if (this.getExtends() != null)
+		Set<AttributeMetaData> result = new LinkedHashSet<>();
+		if (getExtends() != null)
 		{
 			for (AttributeMetaData att : getExtends().getAttributes())
 			{
@@ -153,7 +160,7 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 			}
 		}
 		result.addAll(attributes.values());
-		return Collections.unmodifiableList(result);
+		return Collections.unmodifiableList(Lists.newArrayList(result));
 	}
 
 	@Override
@@ -188,6 +195,7 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 		return entityClass;
 	}
 
+	@Override
 	public DefaultAttributeMetaData addAttribute(String name)
 	{
 		DefaultAttributeMetaData result = new DefaultAttributeMetaData(name);
@@ -264,4 +272,5 @@ public class DefaultEntityMetaData extends AbstractEntityMetaData implements Edi
 		else if (!getName().equals(other.getName())) return false;
 		return true;
 	}
+
 }

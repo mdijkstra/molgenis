@@ -2,16 +2,18 @@ package org.molgenis.data.importer;
 
 import java.util.Date;
 
-import org.apache.log4j.Logger;
 import org.molgenis.data.DataService;
 import org.molgenis.security.runas.RunAsSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ImportRunService
 {
-	private static final Logger logger = Logger.getLogger(ImportRunService.class);
+	private static final Logger LOG = LoggerFactory.getLogger(ImportRunService.class);
+
 	private final DataService dataService;
 
 	@Autowired
@@ -34,7 +36,7 @@ public class ImportRunService
 	}
 
 	@RunAsSystem
-	public void finishImportRun(int importRunId, String message)
+	public void finishImportRun(String importRunId, String message, String importedEntities)
 	{
 		try
 		{
@@ -44,17 +46,18 @@ public class ImportRunService
 				importRun.setStatus(ImportStatus.FINISHED.toString());
 				importRun.setEndDate(new Date());
 				importRun.setMessage(message);
+				importRun.setImportedEntities(importedEntities);
 				dataService.update(ImportRun.ENTITY_NAME, importRun);
 			}
 		}
 		catch (Exception e)
 		{
-			logger.error("Error updating run status", e);
+			LOG.error("Error updating run status", e);
 		}
 	}
 
 	@RunAsSystem
-	public void failImportRun(int importRunId, String message)
+	public void failImportRun(String importRunId, String message)
 	{
 		try
 		{
@@ -69,7 +72,7 @@ public class ImportRunService
 		}
 		catch (Exception e)
 		{
-			logger.error("Error updating run status", e);
+			LOG.error("Error updating run status", e);
 		}
 	}
 }

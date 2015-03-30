@@ -2,7 +2,10 @@ package org.molgenis.data.support;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
@@ -34,6 +37,7 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 	private boolean labelAttribute = false; // remove?
 	private boolean lookupAttribute = false; // remove?
 	private EntityMetaData refEntity;
+	private String expression;
 	private String label;
 	private boolean visible = true; // remove?
 	private boolean unique = false;
@@ -56,7 +60,7 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		this.name = name;
 		this.fieldType = MolgenisFieldTypes.STRING;
 	}
-	
+
 	public DefaultAttributeMetaData(String newName, AttributeMetaData attributeMetaData)
 	{
 		this(attributeMetaData);
@@ -81,6 +85,7 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		this.lookupAttribute = attributeMetaData.isLookupAttribute();
 		EntityMetaData refEntity = attributeMetaData.getRefEntity();
 		this.refEntity = refEntity != null ? new DefaultEntityMetaData(refEntity) : null; // deep copy
+		this.expression = attributeMetaData.getExpression();
 		this.label = attributeMetaData.getLabel();
 		this.visible = attributeMetaData.isVisible();
 		this.unique = attributeMetaData.isUnique();
@@ -113,9 +118,10 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		return description;
 	}
 
-	public void setDescription(String description)
+	public DefaultAttributeMetaData setDescription(String description)
 	{
 		this.description = description;
+		return this;
 	}
 
 	@Override
@@ -164,6 +170,10 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		if (getDataType() instanceof XrefField || getDataType() instanceof MrefField
 				|| getDataType() instanceof CategoricalField)
 		{
+			if (getExpression() != null)
+			{
+				return null;
+			}
 			if (getRefEntity() == null) throw new MolgenisDataException("refEntity is missing for " + getName());
 			if (getRefEntity().getIdAttribute() == null) throw new MolgenisDataException(
 					"idAttribute is missing for entity [" + getRefEntity().getName() + "]");
@@ -174,9 +184,10 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		return getDataType().convert(defaultValue);
 	}
 
-	public void setDefaultValue(Object defaultValue)
+	public DefaultAttributeMetaData setDefaultValue(Object defaultValue)
 	{
 		this.defaultValue = defaultValue;
+		return this;
 	}
 
 	@Override
@@ -212,6 +223,18 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 	public DefaultAttributeMetaData setRefEntity(EntityMetaData refEntity)
 	{
 		this.refEntity = refEntity;
+		return this;
+	}
+
+	@Override
+	public String getExpression()
+	{
+		return expression;
+	}
+
+	public DefaultAttributeMetaData setExpression(String expression)
+	{
+		this.expression = expression;
 		return this;
 	}
 
@@ -440,15 +463,27 @@ public class DefaultAttributeMetaData implements AttributeMetaData
 		if (isVisible() != other.isVisible()) return false;
 
 		// attributeparts
-		if (getAttributeParts() == null)
+		Iterator<AttributeMetaData> attributeParts = getAttributeParts().iterator();
+		Iterator<AttributeMetaData> otherAttributeParts = other.getAttributeParts().iterator();
+		Map<String, AttributeMetaData> otherAttributePartsMap = new HashMap<String, AttributeMetaData>();
+		while (otherAttributeParts.hasNext())
 		{
-			if (other.getAttributeParts() != null) return false;
+			AttributeMetaData otherAttributePart = otherAttributeParts.next();
+			otherAttributePartsMap.put(otherAttributePart.getName(), otherAttributePart);
 		}
-		else
+		while (attributeParts.hasNext())
 		{
-			if (other.getAttributeParts() == null) return false;
-			if (!Lists.newArrayList(getAttributeParts()).equals(Lists.newArrayList(other.getAttributeParts()))) return false;
+			AttributeMetaData attributePart = attributeParts.next();
+			if (!attributePart.isSameAs(otherAttributePartsMap.get(attributePart.getName())))
+			{
+				return false;
+			}
+			else
+			{
+				otherAttributePartsMap.remove(attributePart.getName());
+			}
 		}
+		if (otherAttributePartsMap.size() > 0) return false;
 
 		return true;
 	}

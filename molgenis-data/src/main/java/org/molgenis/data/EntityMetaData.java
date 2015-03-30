@@ -28,6 +28,13 @@ public interface EntityMetaData
 	String getSimpleName();
 
 	/**
+	 * The name of the backend where the entities of this type are stored
+	 * 
+	 * @return
+	 */
+	String getBackend();
+
+	/**
 	 * Entities can be abstract (analogous an 'interface' or 'protocol'). Use is to define reusable Entity model
 	 * components that cannot be instantiated themselves (i.e. there cannot be data attached to this entity meta data).
 	 */
@@ -70,6 +77,11 @@ public interface EntityMetaData
 	 * Attribute that is used as unique label. If no label exist, returns getIdAttribute().
 	 */
 	AttributeMetaData getLabelAttribute();
+
+	/**
+	 * Returns attributes that must be searched in case of xref/mref search
+	 */
+	Iterable<AttributeMetaData> getLookupAttributes();
 
 	/**
 	 * Get attribute by name (case insensitive), returns null if not found

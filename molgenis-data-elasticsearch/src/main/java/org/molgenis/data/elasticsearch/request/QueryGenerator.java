@@ -1,5 +1,7 @@
 package org.molgenis.data.elasticsearch.request;
 
+import static org.molgenis.data.elasticsearch.index.ElasticsearchIndexCreator.DEFAULT_ANALYZER;
+
 import java.util.Iterator;
 import java.util.List;
 
@@ -43,21 +45,24 @@ public class QueryGenerator implements QueryPartGenerator
 		final int nrQueryRules = queryRules.size();
 		if (nrQueryRules == 1)
 		{
+			// simple query consisting of one query clause
 			queryBuilder = createQueryClause(queryRules.get(0), entityMetaData);
 		}
 		else
 		{
-
+			// boolean query consisting of combination of query clauses
 			Operator occur = null;
 			BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
 			for (int i = 0; i < nrQueryRules; i += 2)
 			{
 				QueryRule queryRule = queryRules.get(i);
 
-				// read ahead to retrieve and validate occur operator
-				if (nrQueryRules == 1)
+				// determine whether this query is a 'not' query
+				if (queryRule.getOperator() == Operator.NOT)
 				{
-					occur = Operator.AND;
+					occur = Operator.NOT;
+					queryRule = queryRules.get(i + 1);
+					i += 1;
 				}
 				else if (i + 1 < nrQueryRules)
 				{
@@ -69,7 +74,6 @@ public class QueryGenerator implements QueryPartGenerator
 					{
 						case AND:
 						case OR:
-						case NOT:
 							if (occur != null && occurOperator != occur)
 							{
 								throw new MolgenisQueryException(
@@ -106,6 +110,7 @@ public class QueryGenerator implements QueryPartGenerator
 			}
 			queryBuilder = boolQuery;
 		}
+
 		return queryBuilder;
 	}
 
@@ -176,6 +181,7 @@ public class QueryGenerator implements QueryPartGenerator
 							break;
 						}
 						case CATEGORICAL:
+						case CATEGORICAL_MREF:
 						case XREF:
 						case MREF:
 						{
@@ -260,6 +266,7 @@ public class QueryGenerator implements QueryPartGenerator
 								Iterables.toArray(iterable, Object.class));
 						break;
 					case CATEGORICAL:
+					case CATEGORICAL_MREF:
 					case MREF:
 					case XREF:
 						// support both entity iterable as entity id iterable as value
@@ -294,7 +301,6 @@ public class QueryGenerator implements QueryPartGenerator
 					default:
 						throw new RuntimeException("Unknown data type [" + dataType + "]");
 				}
-
 				queryBuilder = QueryBuilders.filteredQuery(QueryBuilders.matchAllQuery(), filterBuilder);
 				break;
 			}
@@ -313,6 +319,24 @@ public class QueryGenerator implements QueryPartGenerator
 				validateNumericalQueryField(queryField, entityMetaData);
 
 				FilterBuilder filterBuilder = FilterBuilders.rangeFilter(queryField).lte(queryValue);
+				queryBuilder = QueryBuilders.filteredQuery(QueryBuilders.matchAllQuery(), filterBuilder);
+				break;
+			}
+			case RANGE:
+			{
+				if (queryValue == null) throw new MolgenisQueryException("Query value cannot be null");
+				if (!(queryValue instanceof Iterable<?>))
+				{
+					throw new MolgenisQueryException("Query value must be a Iterable instead of ["
+							+ queryValue.getClass().getSimpleName() + "]");
+				}
+				Iterable<?> iterable = (Iterable<?>) queryValue;
+
+				validateNumericalQueryField(queryField, entityMetaData);
+
+				Iterator<?> iterator = iterable.iterator();
+				FilterBuilder filterBuilder = FilterBuilders.rangeFilter(queryField).gte(iterator.next())
+						.lte(iterator.next());
 				queryBuilder = QueryBuilders.filteredQuery(QueryBuilders.matchAllQuery(), filterBuilder);
 				break;
 			}
@@ -343,24 +367,21 @@ public class QueryGenerator implements QueryPartGenerator
 						throw new MolgenisQueryException("Illegal data type [" + dataType + "] for operator ["
 								+ queryOperator + "]");
 					case CATEGORICAL:
+					case CATEGORICAL_MREF:
 					case MREF:
 					case XREF:
+					case SCRIPT: // due to size would result in large amount of ngrams
+					case TEXT: // due to size would result in large amount of ngrams
+					case HTML: // due to size would result in large amount of ngrams
 						throw new UnsupportedOperationException("Query with operator [" + queryOperator
 								+ "] and data type [" + dataType + "] not supported");
 					case EMAIL:
 					case ENUM:
-					case HTML:
 					case HYPERLINK:
-					case SCRIPT:
 					case STRING:
-					case TEXT:
-						// see note about extremely slow wildcard queries:
-						// http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/query-dsl-wildcard-query.html
-						String wildcardQueryValue = new StringBuilder("*")
-								.append(queryValue.toString().replaceAll("\\*", "\\\\*").replaceAll("\\?", "\\\\?"))
-								.append('*').toString();
-						queryBuilder = QueryBuilders.wildcardQuery(queryField + '.'
-								+ MappingsBuilder.FIELD_NOT_ANALYZED, wildcardQueryValue);
+						queryBuilder = QueryBuilders.matchQuery(
+								queryField + '.' + MappingsBuilder.FIELD_NGRAM_ANALYZED, queryValue).analyzer(
+								DEFAULT_ANALYZER);
 						break;
 					case FILE:
 					case IMAGE:
@@ -407,6 +428,7 @@ public class QueryGenerator implements QueryPartGenerator
 							queryBuilder = QueryBuilders.matchQuery(queryField, queryValue);
 							break;
 						case CATEGORICAL:
+						case CATEGORICAL_MREF:
 						case MREF:
 						case XREF:
 							queryBuilder = QueryBuilders.nestedQuery(queryField,
@@ -439,6 +461,7 @@ public class QueryGenerator implements QueryPartGenerator
 		{
 			case XREF:
 			case CATEGORICAL:
+			case CATEGORICAL_MREF:
 			case MREF:
 				return queryField;
 			case BOOL:
@@ -488,6 +511,7 @@ public class QueryGenerator implements QueryPartGenerator
 				break;
 			case BOOL:
 			case CATEGORICAL:
+			case CATEGORICAL_MREF:
 			case COMPOUND:
 			case EMAIL:
 			case ENUM:

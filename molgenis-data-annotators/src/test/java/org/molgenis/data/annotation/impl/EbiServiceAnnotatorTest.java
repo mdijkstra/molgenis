@@ -125,7 +125,7 @@ public class EbiServiceAnnotatorTest
 			}
 		}))).thenReturn(catalogReleaseResponse);
 
-		Iterator<Entity> results = annotator.annotate(input.iterator());
+		Iterator<Entity> results = annotator.annotate(input);
 
 		assertEquals(results.next().getString("chemblId"), expectedEntity.getString("chemblId"));
 	}
@@ -133,12 +133,12 @@ public class EbiServiceAnnotatorTest
 	@Test
 	public void canAnnotateTrueTest()
 	{
-		assertEquals(annotator.canAnnotate(metaDataCanAnnotate), true);
+		assertEquals(annotator.canAnnotate(metaDataCanAnnotate), "true");
 	}
 
 	@Test
 	public void canAnnotateFalseTest()
 	{
-		assertEquals(annotator.canAnnotate(metaDataCantAnnotate), false);
+		assertEquals(annotator.canAnnotate(metaDataCantAnnotate), "a required attribute has the wrong datatype");
 	}
 }

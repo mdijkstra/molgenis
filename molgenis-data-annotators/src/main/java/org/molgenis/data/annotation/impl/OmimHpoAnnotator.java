@@ -1,6 +1,8 @@
 package org.molgenis.data.annotation.impl;
 
 import java.io.IOException;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -14,6 +16,7 @@ import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AnnotationService;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.HgncLocationsUtils;
 import org.molgenis.data.annotation.LocusAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.HPOTerm;
@@ -22,9 +25,11 @@ import org.molgenis.data.annotation.impl.datastructures.OMIMTerm;
 import org.molgenis.data.annotation.provider.HgncLocationsProvider;
 import org.molgenis.data.annotation.provider.HpoMappingProvider;
 import org.molgenis.data.annotation.provider.OmimMorbidMapProvider;
+import org.molgenis.data.annotation.provider.UrlPinger;
 import org.molgenis.data.support.DefaultAttributeMetaData;
 import org.molgenis.data.support.DefaultEntityMetaData;
 import org.molgenis.data.support.MapEntity;
+import org.molgenis.framework.server.MolgenisSettings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.stereotype.Component;
@@ -44,8 +49,7 @@ import org.springframework.stereotype.Component;
 @Component("omimHpoService")
 public class OmimHpoAnnotator extends LocusAnnotator
 {
-	private static final String NAME = "OmimHpoAnnotator";
-	private static final String LABEL = "OmimHpo";
+	private static final String NAME = "OmimHpo";
 
 	public static final String OMIM_CAUSAL_IDENTIFIER = "OMIM_Causal_ID";
 	public static final String OMIM_DISORDERS = "OMIM_Disorders";
@@ -71,9 +75,13 @@ public class OmimHpoAnnotator extends LocusAnnotator
 	private final HgncLocationsProvider hgncLocationsProvider;
 	private final HpoMappingProvider hpoMappingProvider;
 
+	private final MolgenisSettings molgenisSettings;
+	private final UrlPinger urlPinger;
+
 	@Autowired
 	public OmimHpoAnnotator(AnnotationService annotatorService, OmimMorbidMapProvider omimMorbidMapProvider,
-			HgncLocationsProvider hgncLocationsProvider, HpoMappingProvider hpoMappingProvider) throws IOException
+			HgncLocationsProvider hgncLocationsProvider, HpoMappingProvider hpoMappingProvider,
+			MolgenisSettings molgenisSettings, UrlPinger urlPinger) throws IOException
 	{
 		if (annotatorService == null) throw new IllegalArgumentException("annotatorService is null");
 		if (omimMorbidMapProvider == null) throw new IllegalArgumentException("omimMorbidMapProvider is null");
@@ -83,6 +91,8 @@ public class OmimHpoAnnotator extends LocusAnnotator
 		this.omimMorbidMapProvider = omimMorbidMapProvider;
 		this.hgncLocationsProvider = hgncLocationsProvider;
 		this.hpoMappingProvider = hpoMappingProvider;
+		this.molgenisSettings = molgenisSettings;
+		this.urlPinger = urlPinger;
 	}
 
 	@Override
@@ -92,24 +102,21 @@ public class OmimHpoAnnotator extends LocusAnnotator
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
 	}
 
 	@Override
-	public String getLabel()
-	{
-		return LABEL;
-	}
-
-	@Override
 	public boolean annotationDataExists()
 	{
-		boolean dataExists = true;
-
-		// TODO Check if online resources are available
-
+		boolean dataExists = false;
+		if (urlPinger.ping(molgenisSettings.getProperty(HpoMappingProvider.KEY_HPO_MAPPING, ""), 500)
+				&& urlPinger.ping(
+						molgenisSettings.getProperty(HgncLocationsProvider.KEY_HGNC_LOCATIONS_VALUE, ""), 500))
+		{
+			dataExists = true;
+		}
 		return dataExists;
 	}
 
@@ -189,11 +196,11 @@ public class OmimHpoAnnotator extends LocusAnnotator
 					resultMap.put(HPO_DISEASE_DATABASE_ENTRY, HPODiseaseDatabaseEntries);
 					resultMap.put(HPO_ENTREZ_ID, HPOEntrezIdentifiers);
 
-					results.add(getAnnotatedEntity(entity, resultMap));
+					results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 				}
 				else
 				{
-					results.add(getAnnotatedEntity(entity, resultMap));
+					results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 				}
 			}
 		}

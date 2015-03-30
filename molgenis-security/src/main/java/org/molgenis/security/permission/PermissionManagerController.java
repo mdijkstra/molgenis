@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.log4j.Logger;
 import org.molgenis.auth.GroupAuthority;
 import org.molgenis.auth.MolgenisUser;
 import org.molgenis.auth.UserAuthority;
@@ -15,6 +14,8 @@ import org.molgenis.framework.ui.MolgenisPlugin;
 import org.molgenis.framework.ui.MolgenisPluginController;
 import org.molgenis.security.core.Permission;
 import org.molgenis.security.core.utils.SecurityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -36,7 +37,7 @@ import com.google.common.collect.Lists;
 @RequestMapping(URI)
 public class PermissionManagerController extends MolgenisPluginController
 {
-	private static final Logger logger = Logger.getLogger(PermissionManagerController.class);
+	private static final Logger LOG = LoggerFactory.getLogger(PermissionManagerController.class);
 
 	public static final String URI = MolgenisPluginController.PLUGIN_URI_PREFIX + "permissionmanager";
 
@@ -70,35 +71,35 @@ public class PermissionManagerController extends MolgenisPluginController
 
 	@RequestMapping(value = "/plugin/group/{groupId}", method = RequestMethod.GET)
 	@ResponseBody
-	public Permissions getGroupPluginPermissions(@PathVariable Integer groupId)
+	public Permissions getGroupPluginPermissions(@PathVariable String groupId)
 	{
 		return pluginPermissionManagerService.getGroupPluginPermissions(groupId);
 	}
 
 	@RequestMapping(value = "/entityclass/group/{groupId}", method = RequestMethod.GET)
 	@ResponseBody
-	public Permissions getGroupEntityClassPermissions(@PathVariable Integer groupId)
+	public Permissions getGroupEntityClassPermissions(@PathVariable String groupId)
 	{
 		return pluginPermissionManagerService.getGroupEntityClassPermissions(groupId);
 	}
 
 	@RequestMapping(value = "/plugin/user/{userId}", method = RequestMethod.GET)
 	@ResponseBody
-	public Permissions getUserPluginPermissions(@PathVariable Integer userId)
+	public Permissions getUserPluginPermissions(@PathVariable String userId)
 	{
 		return pluginPermissionManagerService.getUserPluginPermissions(userId);
 	}
 
 	@RequestMapping(value = "/entityclass/user/{userId}", method = RequestMethod.GET)
 	@ResponseBody
-	public Permissions getUserEntityClassPermissions(@PathVariable Integer userId)
+	public Permissions getUserEntityClassPermissions(@PathVariable String userId)
 	{
 		return pluginPermissionManagerService.getUserEntityClassPermissions(userId);
 	}
 
 	@RequestMapping(value = "/update/plugin/group", method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.OK)
-	public void updateGroupPluginPermissions(@RequestParam Integer groupId, WebRequest webRequest)
+	public void updateGroupPluginPermissions(@RequestParam String groupId, WebRequest webRequest)
 	{
 		List<GroupAuthority> authorities = new ArrayList<GroupAuthority>();
 		for (MolgenisPlugin plugin : pluginPermissionManagerService.getPlugins())
@@ -121,7 +122,7 @@ public class PermissionManagerController extends MolgenisPluginController
 
 	@RequestMapping(value = "/update/entityclass/group", method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.OK)
-	public void updateGroupEntityClassPermissions(@RequestParam Integer groupId, WebRequest webRequest)
+	public void updateGroupEntityClassPermissions(@RequestParam String groupId, WebRequest webRequest)
 	{
 		List<GroupAuthority> authorities = new ArrayList<GroupAuthority>();
 		for (String entityClassId : pluginPermissionManagerService.getEntityClassIds())
@@ -143,7 +144,7 @@ public class PermissionManagerController extends MolgenisPluginController
 
 	@RequestMapping(value = "/update/plugin/user", method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.OK)
-	public void updateUserPluginPermissions(@RequestParam Integer userId, WebRequest webRequest)
+	public void updateUserPluginPermissions(@RequestParam String userId, WebRequest webRequest)
 	{
 		List<UserAuthority> authorities = new ArrayList<UserAuthority>();
 		for (MolgenisPlugin plugin : pluginPermissionManagerService.getPlugins())
@@ -165,7 +166,7 @@ public class PermissionManagerController extends MolgenisPluginController
 
 	@RequestMapping(value = "/update/entityclass/user", method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.OK)
-	public void updateUserEntityClassPermissions(@RequestParam Integer userId, WebRequest webRequest)
+	public void updateUserEntityClassPermissions(@RequestParam String userId, WebRequest webRequest)
 	{
 		List<UserAuthority> authorities = new ArrayList<UserAuthority>();
 		for (String entityClassId : pluginPermissionManagerService.getEntityClassIds())
@@ -190,7 +191,7 @@ public class PermissionManagerController extends MolgenisPluginController
 	@ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
 	public Map<String, String> handleRuntimeException(RuntimeException e)
 	{
-		logger.error(null, e);
+		LOG.error(null, e);
 		return Collections.singletonMap("errorMessage",
 				"An error occurred. Please contact the administrator.<br />Message:" + e.getMessage());
 	}

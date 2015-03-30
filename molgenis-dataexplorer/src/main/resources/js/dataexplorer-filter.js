@@ -33,6 +33,7 @@
 			case 'SCRIPT':
 				return self.createComplexFilter(attribute, filter, wizard, 'OR');
 				break;
+			case 'CATEGORICAL_MREF':	
 			case 'MREF':
 				return self.createComplexFilter(attribute, filter, wizard, null);
 				break;
@@ -169,6 +170,7 @@
 			case 'SCRIPT':
 				return htmlEscape(values[0] ? values[0] : '');
 			case 'CATEGORICAL':
+			case 'CATEGORICAL_MREF':
 			case 'MREF':
 			case 'XREF':
 				var operator = (filter.operator ? filter.operator.toLocaleLowerCase() : 'or');
@@ -531,6 +533,7 @@
 				break;
 			case 'XREF':
 			case 'MREF':
+			case 'CATEGORICAL_MREF':
 				var operator = simpleFilter ? simpleFilter.operator : 'OR';
 				var container = $('<div class="xrefmrefsearch">');
 				$controls.append(container);
@@ -647,7 +650,7 @@
 				
 				if(value) {
 					// Add values
-					if(attribute.fieldType === 'MREF' || attribute.fieldType === 'XREF'){
+					if(attribute.fieldType === 'MREF' || attribute.fieldType == 'CATEGORICAL_MREF' || attribute.fieldType === 'XREF'){
 						var mrefValues = value.split(',');
 						$(mrefValues).each(function(i){
 							values.push(mrefValues[i]);
@@ -677,6 +680,13 @@
 							if(name && (name.match(/-from$/g) || name === 'sliderleft')){
 								fromValue = value;
 							}
+						}
+						
+						// Validate that to > from
+						if(attribute.fieldType === 'DECIMAL' || attribute.fieldType === 'INT' || attribute.fieldType === 'LONG') {
+							if(parseFloat(toValue) <= parseFloat(fromValue)) {
+								toValue = undefined;
+							} 
 						}
 					}
 					else
@@ -744,6 +754,38 @@
 				}
 			} else {
 				if(values){
+					// determine query operator for attribute type
+					var attrOperator;
+					switch(attribute.fieldType) {
+						case 'BOOL':
+						case 'CATEGORICAL':
+						case 'CATEGORICAL_MREF':
+						case 'DATE':
+						case 'DATE_TIME':
+						case 'DECIMAL':
+						case 'ENUM':
+						case 'INT':
+						case 'LONG':
+						case 'MREF':
+						case 'XREF':
+							attrOperator = 'EQUALS';
+							break;
+						case 'EMAIL':
+						case 'HTML':
+						case 'HYPERLINK':
+						case 'SCRIPT':
+						case 'STRING':
+						case 'TEXT':
+							attrOperator = 'SEARCH';
+							break;
+						case 'COMPOUND':
+						case 'FILE':
+						case 'IMAGE':
+							throw 'Unsupported data type: ' + attribute.fieldType;
+						default:
+							throw 'Unknown data type: ' + attribute.fieldType;
+					}
+					
 					if (values.length > 1) {
 						var nestedRule = {
 							operator: 'NESTED',
@@ -753,13 +795,13 @@
 						$.each(values, function(index, value) {
 							if (index > 0) {
 								nestedRule.nestedRules.push({
-									operator : operator
+									operator : operator || 'OR'
 								});
 							}
 		
 							nestedRule.nestedRules.push({
 								field : attribute.name,
-								operator : 'EQUALS',
+								operator : attrOperator,
 								value : value
 							});
 						});
@@ -767,7 +809,7 @@
 					} else {
 						rule = {
 							field : attribute.name,
-							operator : 'EQUALS',
+							operator : attrOperator,
 							value : values[0]
 						};
 					}

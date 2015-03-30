@@ -12,6 +12,7 @@ import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AnnotationService;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.HgncLocationsUtils;
 import org.molgenis.data.annotation.LocusAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.HGNCLocations;
@@ -56,7 +57,7 @@ public class KeggServiceAnnotator extends LocusAnnotator
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return "KEGG";
 	}
@@ -86,6 +87,7 @@ public class KeggServiceAnnotator extends LocusAnnotator
 
 		List<String> geneSymbols = HgncLocationsUtils.locationToHgcn(hgncLocationsProvider.getHgncLocations(), locus);
 
+		// TODO: cache this
 		Map<String, String> hgncToKeggGeneId = hgncToKeggGeneId();
 		Map<String, ArrayList<String>> keggGenePathways = getKeggGenePathways(keggPathwayGenes);
 
@@ -130,7 +132,7 @@ public class KeggServiceAnnotator extends LocusAnnotator
 						// no genes for this pathway, do nothing
 					}
 
-					results.add(getAnnotatedEntity(entity, resultMap));
+					results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 				}
 			}
 		}
@@ -247,6 +249,7 @@ public class KeggServiceAnnotator extends LocusAnnotator
 	 **/
 	private Map<String, String> hgncToKeggGeneId() throws IOException
 	{
+		// TODO: Cache this!!!
 		Map<String, KeggGene> keggGenes = getKeggGenes();
 		Map<String, String> res = new HashMap<String, String>();
 

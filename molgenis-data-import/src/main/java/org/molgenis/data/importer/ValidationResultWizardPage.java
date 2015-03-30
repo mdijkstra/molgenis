@@ -2,19 +2,24 @@ package org.molgenis.data.importer;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.servlet.http.HttpServletRequest;
 
-import org.apache.log4j.Logger;
+import com.google.common.collect.Lists;
+import org.molgenis.auth.MolgenisGroup;
 import org.molgenis.data.DataService;
 import org.molgenis.data.DatabaseAction;
 import org.molgenis.data.FileRepositoryCollectionFactory;
 import org.molgenis.data.RepositoryCollection;
 import org.molgenis.security.core.utils.SecurityUtils;
+import org.molgenis.security.user.UserAccountService;
 import org.molgenis.ui.wizard.AbstractWizardPage;
 import org.molgenis.ui.wizard.Wizard;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -24,8 +29,9 @@ import org.springframework.validation.ObjectError;
 @Component
 public class ValidationResultWizardPage extends AbstractWizardPage
 {
-	private static final Logger logger = Logger.getLogger(ValidationResultWizardPage.class);
 	private static final long serialVersionUID = 1L;
+	private static final Logger LOG = LoggerFactory.getLogger(ValidationResultWizardPage.class);
+
 	private final ExecutorService asyncImportJobs = Executors.newCachedThreadPool();
 
 	@Autowired
@@ -42,6 +48,10 @@ public class ValidationResultWizardPage extends AbstractWizardPage
 
 	@Autowired
 	private ImportPostProcessingService importPostProcessingService;
+
+	@Autowired
+	UserAccountService userAccountService;
+	private List<MolgenisGroup> groups;
 
 	@Override
 	public String getTitle()
@@ -88,18 +98,29 @@ public class ValidationResultWizardPage extends AbstractWizardPage
 			catch (RuntimeException e)
 			{
 				File file = importWizard.getFile();
-				logger.warn("Import of file [" + file.getName() + "] failed for action [" + entityImportOption + "]", e);
+				LOG.warn("Import of file [" + file.getName() + "] failed for action [" + entityImportOption + "]", e);
 				result.addError(new ObjectError("wizard", "<b>Your import failed:</b><br />" + e.getMessage()));
 			}
 			catch (IOException e)
 			{
 				File file = importWizard.getFile();
-				logger.warn("Import of file [" + file.getName() + "] failed for action [" + entityImportOption + "]", e);
+				LOG.warn("Import of file [" + file.getName() + "] failed for action [" + entityImportOption + "]", e);
 				result.addError(new ObjectError("wizard", "<b>Your import failed:</b><br />" + e.getMessage()));
 			}
 
 		}
 
+		// Convert to list because it's less impossible use in FreeMarker
+		if (!userAccountService.getCurrentUser().getSuperuser())
+		{
+			groups = Lists.newArrayList(userAccountService.getCurrentUserGroups());
+		}
+		else
+		{
+			groups = Lists.newArrayList(dataService.findAll(MolgenisGroup.ENTITY_NAME, MolgenisGroup.class));
+		}
+
+		((ImportWizard) wizard).setGroups(groups);
 		return null;
 	}
 

@@ -11,6 +11,7 @@ import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AnnotationService;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.HgncLocationsUtils;
 import org.molgenis.data.annotation.LocusAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.CgdData;
@@ -34,8 +35,7 @@ public class ClinicalGenomicsDatabaseServiceAnnotator extends LocusAnnotator
 	private final HgncLocationsProvider hgncLocationsProvider;
 	private final CgdDataProvider cgdDataProvider;
 
-	private static final String NAME = "ClinicalGenomicsDatabaseAnnotator";
-	private static final String LABEL = "ClinicalGenomicsDatabase";
+	private static final String NAME = "ClinicalGenomicsDatabase";
 
 	public static final String REFERENCES = "REFERENCES";
 	public static final String INTERVENTION_RATIONALE = "INTERVENTION/RATIONALE";
@@ -72,15 +72,9 @@ public class ClinicalGenomicsDatabaseServiceAnnotator extends LocusAnnotator
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
-	}
-
-	@Override
-	public String getLabel()
-	{
-		return LABEL;
 	}
 
 	@Override
@@ -126,11 +120,11 @@ public class ClinicalGenomicsDatabaseServiceAnnotator extends LocusAnnotator
 				resultMap.put(CHROMOSOME, chromosome);
 				resultMap.put(POSITION, position);
 
-				results.add(getAnnotatedEntity(entity, resultMap));
+				results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 			}
 			else
 			{
-				results.add(getAnnotatedEntity(entity, resultMap));
+				results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 			}
 		}
 		catch (Exception e)

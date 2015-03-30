@@ -1,20 +1,43 @@
 package org.molgenis.util;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.MolgenisDataException;
+import org.molgenis.data.Repository;
+import org.molgenis.fieldtypes.XrefField;
 
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
 public class DependencyResolver
 {
+	/**
+	 * Determine the entity import order
+	 * 
+	 * @param repos
+	 * @return
+	 */
+	public static List<Repository> resolve(Iterable<Repository> repos)
+	{
+		Map<String, Repository> repoByName = new HashMap<>();
+		for (Repository repo : repos)
+		{
+			repoByName.put(repo.getEntityMetaData().getName(), repo);
+		}
+
+		return resolve(repoByName.values().stream().map(repo -> repo.getEntityMetaData()).collect(Collectors.toSet()))
+				.stream().map(emd -> repoByName.get(emd.getName())).collect(Collectors.toList());
+	}
 
 	/**
 	 * Determine the entity import order
@@ -42,7 +65,7 @@ public class DependencyResolver
 				dependencies.add(meta.getExtends());
 			}
 
-			for (AttributeMetaData attr : meta.getAttributes())
+			for (AttributeMetaData attr : meta.getAtomicAttributes())
 			{
 				if ((attr.getRefEntity() != null) && !attr.getRefEntity().equals(meta))// self reference
 				{
@@ -58,10 +81,11 @@ public class DependencyResolver
 			final List<String> ready = Lists.newArrayList();
 
 			// Get all metadata without dependencies
-			for (String name : dependenciesByName.keySet())
+			for (Entry<String, Set<EntityMetaData>> entry : dependenciesByName.entrySet())
 			{
-				if (dependenciesByName.get(name).isEmpty())
+				if (entry.getValue().isEmpty())
 				{
+					String name = entry.getKey();
 					ready.add(name);
 					resolved.add(metaDataByName.get(name));
 				}
@@ -92,6 +116,19 @@ public class DependencyResolver
 		return resolved;
 	}
 
+	public static boolean hasSelfReferences(EntityMetaData emd)
+	{
+		for (AttributeMetaData attr : emd.getAtomicAttributes())
+		{
+			if ((attr.getRefEntity() != null) && attr.getRefEntity().equals(emd))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/**
 	 * Determine the import order of entities that have a self reference
 	 * 
@@ -117,7 +154,6 @@ public class DependencyResolver
 		}
 
 		// You can't have a self reference if you provide id'ds. So we have id's
-
 		Map<Object, Entity> entitiesById = Maps.newHashMap();
 
 		// All self-references of an entity
@@ -140,17 +176,30 @@ public class DependencyResolver
 		{
 			for (AttributeMetaData attr : selfRefAttributes)
 			{
+				List<Entity> refs = Lists.newArrayList();
+
+				if (attr.getDataType() instanceof XrefField)
+				{
+					Entity ref = entity.getEntity(attr.getName());
+					if (ref != null) refs.add(ref);
+				}
+				else
+				{
+					// mrefs
+					Iterable<Entity> it = entity.getEntities(attr.getName());
+					if (it != null) Iterables.addAll(refs, it);
+				}
+
 				Object id = entity.getIdValue();
-				Entity ref = entity.getEntity(attr.getName());
-				if (ref != null)
+				for (Entity ref : refs)
 				{
 					Object refId = ref.getIdValue();
 					if (refId == null) throw new MolgenisDataException("Entity [" + emd.getName()
 							+ "] contains an attribute that has a self reference but is missing an id.");
 					if (!id.equals(refId))// Ref to the entity itself, should that be possible?
 					{
-						// If it is an unknown id it is already in the repository (or is missing, this is checked in the
-						// validator)
+						// If it is an unknown id it is already in the repository (or is missing, this is checked in
+						// the validator)
 						if (entitiesById.containsKey(refId))
 						{
 							dependenciesById.get(id).add(refId);
@@ -166,10 +215,11 @@ public class DependencyResolver
 			final List<Object> ready = Lists.newArrayList();
 
 			// Get all entities without dependencies
-			for (Object id : dependenciesById.keySet())
+			for (Entry<Object, Set<Object>> entry : dependenciesById.entrySet())
 			{
-				if (dependenciesById.get(id).isEmpty())
+				if (entry.getValue().isEmpty())
 				{
+					Object id = entry.getKey();
 					ready.add(id);
 					resolved.add(entitiesById.get(id));
 				}

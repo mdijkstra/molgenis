@@ -1,5 +1,8 @@
 package org.molgenis.app;
 
+import static org.molgenis.ui.MolgenisPluginInterceptor.DEFAULT_VAL_FOOTER;
+import static org.molgenis.ui.MolgenisPluginInterceptor.KEY_FOOTER;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -14,6 +17,8 @@ import org.molgenis.data.annotation.impl.ClinVarServiceAnnotator;
 import org.molgenis.data.annotation.impl.DbnsfpGeneServiceAnnotator;
 import org.molgenis.data.annotation.impl.DbnsfpVariantServiceAnnotator;
 import org.molgenis.data.annotation.provider.CgdDataProvider;
+import org.molgenis.data.annotation.provider.HgncLocationsProvider;
+import org.molgenis.data.annotation.provider.HpoMappingProvider;
 import org.molgenis.data.support.GenomeConfig;
 import org.molgenis.data.support.QueryImpl;
 import org.molgenis.dataexplorer.controller.DataExplorerController;
@@ -57,6 +62,7 @@ public class WebAppDatabasePopulatorServiceImpl implements WebAppDatabasePopulat
 		// Genomebrowser stuff
 		Map<String, String> runtimePropertyMap = new HashMap<String, String>();
 
+		runtimePropertyMap.put("plugin.dataexplorer.genomebrowser", "true");
 		runtimePropertyMap.put(DataExplorerController.INITLOCATION,
 				"chr:'1',viewStart:10000000,viewEnd:10100000,cookieKey:'human',nopersist:true");
 		runtimePropertyMap.put(DataExplorerController.COORDSYSTEM,
@@ -84,9 +90,6 @@ public class WebAppDatabasePopulatorServiceImpl implements WebAppDatabasePopulat
 		// DataExplorer rows clickable yes / no
 		runtimePropertyMap.put(DataExplorerController.KEY_DATAEXPLORER_ROW_CLICKABLE, String.valueOf(false));
 
-		// DataExplorer hide select if dataset selected through url
-		runtimePropertyMap.put(DataExplorerController.KEY_HIDE_SELECT, String.valueOf(true));
-
 		// Aggregate anonymization threshold (default no threshold)
 		runtimePropertyMap.put(IndexedCrudRepositorySecurityDecorator.SETTINGS_KEY_AGGREGATE_ANONYMIZATION_THRESHOLD,
 				Integer.toString(0));
@@ -98,6 +101,11 @@ public class WebAppDatabasePopulatorServiceImpl implements WebAppDatabasePopulat
 		{
 			throw new IllegalArgumentException("missing required java system property 'molgenis.home'");
 		}
+
+		// HPO and HGNC Download URLs
+		runtimePropertyMap.put(HpoMappingProvider.KEY_HPO_MAPPING, HpoMappingProvider.DEFAULT_HPO_MAPPING_VALUE);
+		runtimePropertyMap.put(HgncLocationsProvider.KEY_HGNC_LOCATIONS_VALUE,
+				HgncLocationsProvider.DEFAULT_HGNC_LOCATIONS_VALUE);
 
 		if (!molgenisHomeDir.endsWith("/")) molgenisHomeDir = molgenisHomeDir + '/';
 		String molgenisHomeDirAnnotationResources = molgenisHomeDir + "data/annotation_resources";
@@ -113,6 +121,8 @@ public class WebAppDatabasePopulatorServiceImpl implements WebAppDatabasePopulat
 		runtimePropertyMap.put(ClinVarServiceAnnotator.CLINVAR_FILE_LOCATION_PROPERTY,
 				molgenisHomeDirAnnotationResources + "/Clinvar/variant_summary.txt");
 
+		runtimePropertyMap.put(KEY_FOOTER, DEFAULT_VAL_FOOTER);
+
 		runtimePropertyMap.put(DataExplorerController.KEY_HIDE_SEARCH_BOX, String.valueOf(false));
 		runtimePropertyMap.put(DataExplorerController.KEY_HIDE_ITEM_SELECTION, String.valueOf(false));
 		runtimePropertyMap.put(DataExplorerController.KEY_HEADER_ABBREVIATE,
@@ -125,6 +135,7 @@ public class WebAppDatabasePopulatorServiceImpl implements WebAppDatabasePopulat
 				String.valueOf(DataExplorerController.DEFAULT_VAL_AGGREGATES_DISTINCT_HIDE));
 
 		runtimePropertyMap.put(MolgenisInterceptor.I18N_LOCALE, "en");
+		runtimePropertyMap.put(MolgenisInterceptor.APP_HREF_LOGO, "/img/logo_molgenis_small.png");
 
 		runtimePropertyMap.put(GenomeConfig.GENOMEBROWSER_CHROM, "CHROM,#CHROM,chromosome");
 		runtimePropertyMap.put(GenomeConfig.GENOMEBROWSER_POS, "POS,start_nucleotide");

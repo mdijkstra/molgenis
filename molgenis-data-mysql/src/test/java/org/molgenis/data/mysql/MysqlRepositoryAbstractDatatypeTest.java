@@ -1,23 +1,27 @@
 package org.molgenis.data.mysql;
 
-import org.apache.log4j.Logger;
 import org.molgenis.AppConfig;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
+import org.molgenis.data.meta.MetaDataServiceImpl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 /** Superclass for all datatype specific tests, e.g. MysqlRepositoryStringTest */
 @ContextConfiguration(classes = AppConfig.class)
 public abstract class MysqlRepositoryAbstractDatatypeTest extends AbstractTestNGSpringContextTests
 {
-	@Autowired
-	MysqlRepositoryCollection coll;
+	protected static final Logger LOG = LoggerFactory.getLogger(MysqlRepositoryAbstractDatatypeTest.class);
 
-	Logger logger = Logger.getLogger(getClass());
+	@Autowired
+	MetaDataServiceImpl metaDataService;
+
 	private EntityMetaData metaData;
 
 	/** Define a data model to test */
@@ -42,23 +46,24 @@ public abstract class MysqlRepositoryAbstractDatatypeTest extends AbstractTestNG
 	public void test() throws Exception
 	{
 		// drop if needed
-		coll.drop(getMetaData());
+		if (metaDataService.getEntityMetaData(getMetaData().getName()) != null) metaDataService
+				.deleteEntityMeta(getMetaData().getName());
 
 		// test create table
-		MysqlRepository repo = (MysqlRepository) coll.add(getMetaData());
+		MysqlRepository repo = (MysqlRepository) metaDataService.addEntityMeta(getMetaData());
 		Assert.assertEquals(repo.getCreateSql(), createSql());
 
 		// verify default value
 		Entity defaultEntity = defaultEntity();
-		logger.debug("inserting: " + defaultEntity);
+		LOG.debug("inserting: " + defaultEntity);
 		repo.add(defaultEntity());
 
 		for (Entity e : repo)
 		{
-			logger.debug("found back " + e);
+			LOG.debug("found back " + e);
 			Object value = e.get("col3");
 			Object defaultValue = repo.getEntityMetaData().getAttribute("col3").getDefaultValue();
-			logger.debug("defaultClass=" + defaultValue.getClass().getName() + " - valueClass="
+			LOG.debug("defaultClass=" + defaultValue.getClass().getName() + " - valueClass="
 					+ value.getClass().getName());
 			Assert.assertEquals(defaultValue, value);
 
@@ -72,5 +77,11 @@ public abstract class MysqlRepositoryAbstractDatatypeTest extends AbstractTestNG
 
 		// allow time for logger to finish... (premature end of program results in loss of output)
 		Thread.sleep(100);
+	}
+
+	@AfterClass
+	public void afterClass()
+	{
+		metaDataService.recreateMetaDataRepositories();
 	}
 }

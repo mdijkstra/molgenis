@@ -7,7 +7,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 import static org.molgenis.data.rest.RestController.BASE_URI;
 import static org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -32,9 +31,8 @@ import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.MolgenisDataAccessException;
 import org.molgenis.data.MolgenisDataException;
 import org.molgenis.data.Query;
-import org.molgenis.data.Queryable;
 import org.molgenis.data.Repository;
-import org.molgenis.data.Updateable;
+import org.molgenis.data.meta.MetaDataService;
 import org.molgenis.data.rest.RestControllerTest.RestControllerConfig;
 import org.molgenis.data.rsql.MolgenisRSQL;
 import org.molgenis.data.support.DefaultAttributeMetaData;
@@ -43,6 +41,7 @@ import org.molgenis.data.support.QueryImpl;
 import org.molgenis.data.support.QueryResolver;
 import org.molgenis.messageconverter.CsvHttpMessageConverter;
 import org.molgenis.security.core.MolgenisPermissionService;
+import org.molgenis.security.core.Permission;
 import org.molgenis.security.token.TokenService;
 import org.molgenis.util.GsonHttpMessageConverter;
 import org.molgenis.util.ResourceFingerprintRegistry;
@@ -74,16 +73,25 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	private RestController restController;
 
 	@Autowired
+	private MolgenisPermissionService molgenisPermissionService;
+
+	@Autowired
 	private DataService dataService;
+
+	@Autowired
+	private MetaDataService metaDataService;
 
 	private MockMvc mockMvc;
 
 	@BeforeMethod
 	public void beforeMethod()
 	{
+		reset(molgenisPermissionService);
 		reset(dataService);
+		reset(metaDataService);
+		when(dataService.getMeta()).thenReturn(metaDataService);
 
-		Repository repo = mock(Repository.class, withSettings().extraInterfaces(Updateable.class, Queryable.class));
+		Repository repo = mock(Repository.class);
 
 		Entity entityXref = new MapEntity("id");
 		entityXref.set("id", ENTITY_ID);
@@ -92,6 +100,7 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		Entity entity = new MapEntity("id");
 		entity.set("id", ENTITY_ID);
 		entity.set("name", "Piet");
+		entity.set("enum", "enum1");
 		entity.set("xrefAttribute", entityXref);
 
 		Entity entity2 = new MapEntity("id");
@@ -99,12 +108,12 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		entity2.set("name", "Klaas");
 		entity2.set("xrefAttribute", entityXref);
 
-		List<Entity> entities = new ArrayList();
+		List<Entity> entities = new ArrayList<Entity>();
 		entities.add(entity2);
 		entities.add(entity);
 
 		when(dataService.getEntityNames()).thenReturn(Arrays.asList(ENTITY_NAME));
-		when(dataService.getRepositoryByEntityName(ENTITY_NAME)).thenReturn(repo);
+		when(dataService.getRepository(ENTITY_NAME)).thenReturn(repo);
 
 		when(dataService.findOne(ENTITY_NAME, ENTITY_ID)).thenReturn(entity);
 
@@ -113,6 +122,9 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 
 		Query q2 = new QueryImpl().sort(Sort.Direction.DESC, "name").pageSize(100).offset(0);
 		when(dataService.findAll(ENTITY_NAME, q2)).thenReturn(entities);
+
+		DefaultAttributeMetaData attrEnum = new DefaultAttributeMetaData("enum", FieldTypeEnum.ENUM)
+				.setEnumOptions(Arrays.asList("enum0, enum1"));
 
 		DefaultAttributeMetaData attrName = new DefaultAttributeMetaData("name", FieldTypeEnum.STRING);
 		attrName.setLookupAttribute(true);
@@ -124,8 +136,9 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		EntityMetaData entityMetaData = mock(EntityMetaData.class);
 		when(entityMetaData.getAttribute("name")).thenReturn(attrName);
 		when(entityMetaData.getIdAttribute()).thenReturn(attrId);
-		when(entityMetaData.getAttributes()).thenReturn(Arrays.<AttributeMetaData> asList(attrName, attrId));
-		when(entityMetaData.getAtomicAttributes()).thenReturn(Arrays.<AttributeMetaData> asList(attrName, attrId));
+		when(entityMetaData.getAttributes()).thenReturn(Arrays.<AttributeMetaData> asList(attrName, attrId, attrEnum));
+		when(entityMetaData.getAtomicAttributes()).thenReturn(
+				Arrays.<AttributeMetaData> asList(attrName, attrId, attrEnum));
 		when(entityMetaData.getName()).thenReturn(ENTITY_NAME);
 		when(repo.getEntityMetaData()).thenReturn(entityMetaData);
 		when(dataService.getEntityMetaData(ENTITY_NAME)).thenReturn(entityMetaData);
@@ -169,16 +182,66 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	}
 
 	@Test
+	public void deleteAllDelete() throws Exception
+	{
+		mockMvc.perform(delete(HREF_ENTITY)).andExpect(status().isNoContent());
+		verify(dataService).deleteAll(ENTITY_NAME);
+	}
+
+	@Test
+	public void deleteAllPost() throws Exception
+	{
+		mockMvc.perform(post(HREF_ENTITY).param("_method", "DELETE")).andExpect(status().isNoContent());
+		verify(dataService).deleteAll(ENTITY_NAME);
+	}
+
+	@Test
+	public void deleteMetaDelete() throws Exception
+	{
+		mockMvc.perform(delete(HREF_ENTITY_META)).andExpect(status().isNoContent());
+		verify(metaDataService).deleteEntityMeta(ENTITY_NAME);
+	}
+
+	@Test
+	public void deleteMetaPost() throws Exception
+	{
+		mockMvc.perform(post(HREF_ENTITY_META).param("_method", "DELETE")).andExpect(status().isNoContent());
+		verify(metaDataService).deleteEntityMeta(ENTITY_NAME);
+	}
+
+	@Test
 	public void retrieveEntityMeta() throws Exception
 	{
 		mockMvc.perform(get(HREF_ENTITY_META))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(APPLICATION_JSON))
 				.andExpect(
-						content().string(
-								"{\"href\":\"" + HREF_ENTITY_META + "\",\"name\":\"" + ENTITY_NAME
-										+ "\",\"attributes\":{\"name\":{\"href\":\"" + HREF_ENTITY_META
-										+ "/name\"}},\"idAttribute\":\"id\"}"));
+						content()
+								.string("{\"href\":\""
+										+ HREF_ENTITY_META
+										+ "\",\"name\":\""
+										+ ENTITY_NAME
+										+ "\",\"attributes\":{\"name\":{\"href\":\""
+										+ HREF_ENTITY_META
+										+ "/name\"},\"id\":{\"href\":\"/api/v1/Person/meta/id\"},\"enum\":{\"href\":\"/api/v1/Person/meta/enum\"}},\"idAttribute\":\"id\",\"isAbstract\":false,\"writable\":false}"));
+	}
+
+	@Test
+	public void retrieveEntityMetaWritable() throws Exception
+	{
+		when(molgenisPermissionService.hasPermissionOnEntity(ENTITY_NAME, Permission.WRITE)).thenReturn(true);
+		mockMvc.perform(get(HREF_ENTITY_META))
+				.andExpect(status().isOk())
+				.andExpect(content().contentType(APPLICATION_JSON))
+				.andExpect(
+						content()
+								.string("{\"href\":\""
+										+ HREF_ENTITY_META
+										+ "\",\"name\":\""
+										+ ENTITY_NAME
+										+ "\",\"attributes\":{\"name\":{\"href\":\""
+										+ HREF_ENTITY_META
+										+ "/name\"},\"id\":{\"href\":\"/api/v1/Person/meta/id\"},\"enum\":{\"href\":\"/api/v1/Person/meta/enum\"}},\"idAttribute\":\"id\",\"isAbstract\":false,\"writable\":true}"));
 	}
 
 	@Test
@@ -188,7 +251,10 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		mockMvc.perform(post(HREF_ENTITY_META).param("_method", "GET").content(json).contentType(APPLICATION_JSON))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(APPLICATION_JSON))
-				.andExpect(content().string("{\"href\":\"" + HREF_ENTITY_META + "\",\"name\":\"" + ENTITY_NAME + "\"}"));
+				.andExpect(
+						content().string(
+								"{\"href\":\"" + HREF_ENTITY_META + "\",\"name\":\"" + ENTITY_NAME
+										+ "\",\"writable\":false}"));
 	}
 
 	@Test
@@ -197,7 +263,10 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		mockMvc.perform(get(HREF_ENTITY_META).param("attributes", "name"))
 				.andExpect(status().isOk())
 				.andExpect(content().contentType(APPLICATION_JSON))
-				.andExpect(content().string("{\"href\":\"" + HREF_ENTITY_META + "\",\"name\":\"" + ENTITY_NAME + "\"}"));
+				.andExpect(
+						content().string(
+								"{\"href\":\"" + HREF_ENTITY_META + "\",\"name\":\"" + ENTITY_NAME
+										+ "\",\"writable\":false}"));
 	}
 
 	@Test
@@ -214,8 +283,7 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 										+ ENTITY_NAME
 										+ "\",\"attributes\":{\"name\":{\"href\":\""
 										+ HREF_ENTITY_META
-										+ "/name\",\"fieldType\":\"STRING\",\"name\":\"name\",\"label\":\"name\",\"attributes\":[],\"nillable\":true,\"readOnly\":false,\"labelAttribute\":false,\"unique\":false,\"lookupAttribute\":true,\"aggregateable\":false}},\"idAttribute\":\"id\"}"));
-
+										+ "/name\",\"fieldType\":\"STRING\",\"name\":\"name\",\"label\":\"name\",\"attributes\":[],\"auto\":false,\"nillable\":true,\"readOnly\":false,\"labelAttribute\":false,\"unique\":false,\"visible\":true,\"lookupAttribute\":true,\"aggregateable\":false},\"id\":{\"href\":\"/api/v1/Person/meta/id\",\"fieldType\":\"STRING\",\"name\":\"id\",\"label\":\"id\",\"attributes\":[],\"auto\":false,\"nillable\":true,\"readOnly\":true,\"labelAttribute\":false,\"unique\":true,\"visible\":false,\"lookupAttribute\":false,\"aggregateable\":false},\"enum\":{\"href\":\"/api/v1/Person/meta/enum\",\"fieldType\":\"ENUM\",\"name\":\"enum\",\"label\":\"enum\",\"attributes\":[],\"enumOptions\":[\"enum0, enum1\"],\"auto\":false,\"nillable\":true,\"readOnly\":false,\"labelAttribute\":false,\"unique\":false,\"visible\":true,\"lookupAttribute\":false,\"aggregateable\":false}},\"idAttribute\":\"id\",\"isAbstract\":false,\"writable\":false}"));
 	}
 
 	@Test
@@ -225,9 +293,13 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		{}, new String[]
 		{});
 
-		mockMvc.perform(get(HREF_ENTITY_ID)).andExpect(status().isOk())
+		mockMvc.perform(get(HREF_ENTITY_ID))
+				.andExpect(status().isOk())
 				.andExpect(content().contentType(APPLICATION_JSON))
-				.andExpect(content().string("{\"href\":\"" + HREF_ENTITY_ID + "\",\"name\":\"Piet\"}"));
+				.andExpect(
+						content().string(
+								"{\"href\":\"" + HREF_ENTITY_ID
+										+ "\",\"name\":\"Piet\",\"id\":\"p1\",\"enum\":\"enum1\"}"));
 
 	}
 
@@ -252,7 +324,7 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 						content().string(
 								"{\"href\":\"" + HREF_ENTITY + "\",\"start\":5,\"num\":10,\"total\":0,\"prevHref\":\""
 										+ HREF_ENTITY + "?start=0&num=10\",\"items\":[{\"href\":\"" + HREF_ENTITY_ID
-										+ "\",\"name\":\"Piet\"}]}"));
+										+ "\",\"name\":\"Piet\",\"id\":\"p1\",\"enum\":\"enum1\"}]}"));
 
 	}
 
@@ -268,7 +340,7 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 						content().string(
 								"{\"href\":\"" + HREF_ENTITY + "\",\"start\":5,\"num\":10,\"total\":0,\"prevHref\":\""
 										+ HREF_ENTITY + "?start=0&num=10\",\"items\":[{\"href\":\"" + HREF_ENTITY_ID
-										+ "\",\"name\":\"Piet\"}]}"));
+										+ "\",\"name\":\"Piet\",\"id\":\"p1\",\"enum\":\"enum1\"}]}"));
 
 	}
 
@@ -293,13 +365,13 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	@Test
 	public void retrieveEntityAttributeUnknownAttribute() throws Exception
 	{
-		Repository repo = mock(Repository.class, withSettings().extraInterfaces(Updateable.class, Queryable.class));
+		Repository repo = mock(Repository.class);
 
 		EntityMetaData entityMetaData = mock(EntityMetaData.class);
 		when(entityMetaData.getAttribute("name")).thenReturn(null);
 		when(repo.getEntityMetaData()).thenReturn(entityMetaData);
 		when(dataService.getEntityMetaData(ENTITY_NAME)).thenReturn(entityMetaData);
-		when(dataService.getRepositoryByEntityName(ENTITY_NAME)).thenReturn(repo);
+		when(dataService.getRepository(ENTITY_NAME)).thenReturn(repo);
 		mockMvc.perform(get(HREF_ENTITY_ID + "/name")).andExpect(status().isNotFound());
 	}
 
@@ -315,8 +387,8 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	{
 		reset(dataService);
 
-		Repository repo = mock(Repository.class, withSettings().extraInterfaces(Updateable.class, Queryable.class));
-		when(dataService.getRepositoryByEntityName(ENTITY_NAME)).thenReturn(repo);
+		Repository repo = mock(Repository.class);
+		when(dataService.getRepository(ENTITY_NAME)).thenReturn(repo);
 		when(dataService.getEntityNames()).thenReturn(Arrays.asList(ENTITY_NAME));
 		Entity entityXref = new MapEntity("id");
 		entityXref.set("id", ENTITY_ID);
@@ -370,7 +442,7 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	public void updateInternalRepoNotUpdateable() throws Exception
 	{
 		Repository repo = mock(Repository.class);
-		when(dataService.getRepositoryByEntityName(ENTITY_NAME)).thenReturn(repo);
+		when(dataService.getRepository(ENTITY_NAME)).thenReturn(repo);
 		doThrow(new MolgenisDataException()).when(dataService).update(anyString(), any(Entity.class));
 		mockMvc.perform(put(HREF_ENTITY_ID).content("{name:Klaas}").contentType(APPLICATION_JSON)).andExpect(
 				status().isBadRequest());
@@ -379,8 +451,8 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	@Test
 	public void updateInternalRepoIdAttributeIsNull() throws Exception
 	{
-		Repository repo = mock(Repository.class, withSettings().extraInterfaces(Updateable.class, Queryable.class));
-		when(dataService.getRepositoryByEntityName(ENTITY_NAME)).thenReturn(repo);
+		Repository repo = mock(Repository.class);
+		when(dataService.getRepository(ENTITY_NAME)).thenReturn(repo);
 		EntityMetaData entityMetaData = mock(EntityMetaData.class);
 		when(entityMetaData.getIdAttribute()).thenReturn(null);
 		when(repo.getEntityMetaData()).thenReturn(entityMetaData);
@@ -469,15 +541,16 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 	{
 		mockMvc.perform(get(BASE_URI + "/csv/Person").param("start", "5").param("num", "10").param("q", "name==Piet"))
 				.andExpect(status().isOk()).andExpect(content().contentType("text/csv"))
-				.andExpect(content().string("\"name\",\"id\"\n\"Piet\",\"p1\"\n"));
+				.andExpect(content().string("\"name\",\"id\",\"enum\"\n\"Piet\",\"p1\",\"enum1\"\n"));
 	}
 
 	@Test
 	public void retrieveSortedEntityCollectionCsv() throws Exception
 	{
 		mockMvc.perform(get(BASE_URI + "/csv/Person").param("sortColumn", "name").param("sortOrder", "DESC"))
-				.andExpect(status().isOk()).andExpect(content().contentType("text/csv"))
-				.andExpect(content().string("\"name\",\"id\"\n\"Klaas\",\"p2\"\n\"Piet\",\"p1\"\n"));
+				.andExpect(status().isOk())
+				.andExpect(content().contentType("text/csv"))
+				.andExpect(content().string("\"name\",\"id\",\"enum\"\n\"Klaas\",\"p2\",\n\"Piet\",\"p1\",\"enum1\"\n"));
 	}
 
 	@Configuration
@@ -487,6 +560,12 @@ public class RestControllerTest extends AbstractTestNGSpringContextTests
 		public DataService dataService()
 		{
 			return mock(DataService.class);
+		}
+
+		@Bean
+		public MetaDataService metaDataService()
+		{
+			return mock(MetaDataService.class);
 		}
 
 		@Bean

@@ -16,7 +16,9 @@ public interface Query extends Iterable<Entity>
 	 */
 	Long count();
 
-	<E extends Entity> Iterable<E> findAll(Class<E> klazz);
+	Iterable<Entity> findAll();
+
+	Entity findOne();
 
 	/**
 	 * Filtering rules, seperated by QueryRule.AND and QueryRule.OR clauses
@@ -48,9 +50,20 @@ public interface Query extends Iterable<Entity>
 	 */
 	Query search(String field, String searchTerms);
 
+	/**
+	 * Occur operator 'or'. Example usage: query.eq("field0", "val0").or().eq("field1", "val1")
+	 */
 	Query or();
 
+	/**
+	 * Occur operator 'and'. Example usage: query.eq("field0", "val0").and().eq("field1", "val1")
+	 */
 	Query and();
+
+	/**
+	 * Occur operator 'not'. Example usage: query.not().eq("field0", "val0")
+	 */
+	Query not();
 
 	/**
 	 * 
@@ -111,7 +124,7 @@ public interface Query extends Iterable<Entity>
 	Query unnestAll();
 
 	/**
-	 * Range (excluding smaller and bigger)
+	 * Range (including smaller and bigger)
 	 */
 	Query rng(String field, Object smaller, Object bigger);
 

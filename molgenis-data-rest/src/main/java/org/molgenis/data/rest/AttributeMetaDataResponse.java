@@ -9,6 +9,7 @@ import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.Range;
+import org.molgenis.security.core.MolgenisPermissionService;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
@@ -22,19 +23,24 @@ public class AttributeMetaDataResponse
 	private final String label;
 	private final String description;
 	private final List<?> attributes;
+	private final List<String> enumOptions;
 	private final Object refEntity;
+	private final Boolean auto;
 	private final Boolean nillable;
 	private final Boolean readOnly;
 	private final Object defaultValue;
 	private final Boolean labelAttribute;
 	private final Boolean unique;
+	private final Boolean visible;
 	private Boolean lookupAttribute;
 	private Boolean aggregateable;
 	private Range range;
+	private String expression;
 
-	public AttributeMetaDataResponse(String entityParentName, AttributeMetaData attr)
+	public AttributeMetaDataResponse(String entityParentName, AttributeMetaData attr,
+			MolgenisPermissionService permissionService)
 	{
-		this(entityParentName, attr, null, null);
+		this(entityParentName, attr, null, null, permissionService);
 	}
 
 	/**
@@ -47,11 +53,10 @@ public class AttributeMetaDataResponse
 	 *            set of lowercase attribute names to expand in response
 	 */
 	public AttributeMetaDataResponse(final String entityParentName, AttributeMetaData attr, Set<String> attributesSet,
-			final Map<String, Set<String>> attributeExpandsSet)
+			final Map<String, Set<String>> attributeExpandsSet, MolgenisPermissionService permissionService)
 	{
 		String attrName = attr.getName();
-
-		this.href = String.format("%s/%s/meta/%s", RestController.BASE_URI, entityParentName, attrName);
+		this.href = Href.concatMetaAttributeHref(RestController.BASE_URI, entityParentName, attrName);
 
 		if (attributesSet == null || attributesSet.contains("fieldType".toLowerCase()))
 		{
@@ -77,17 +82,30 @@ public class AttributeMetaDataResponse
 		}
 		else this.description = null;
 
+		if (attributesSet == null || attributesSet.contains("enumOptions".toLowerCase()))
+		{
+			this.enumOptions = attr.getEnumOptions();
+		}
+		else this.enumOptions = null;
+
+		if (attributesSet == null || attributesSet.contains("expression".toLowerCase()))
+		{
+			this.expression = attr.getExpression();
+		}
+		else this.expression = null;
+
 		if (attributesSet == null || attributesSet.contains("refEntity".toLowerCase()))
 		{
 			EntityMetaData refEntity = attr.getRefEntity();
 			if (attributeExpandsSet != null && attributeExpandsSet.containsKey("refEntity".toLowerCase()))
 			{
 				Set<String> subAttributesSet = attributeExpandsSet.get("refEntity".toLowerCase());
-				this.refEntity = refEntity != null ? new EntityMetaDataResponse(refEntity, subAttributesSet, null) : null;
+				this.refEntity = refEntity != null ? new EntityMetaDataResponse(refEntity, subAttributesSet, null,
+						permissionService) : null;
 			}
 			else
 			{
-				this.refEntity = refEntity != null ? new Href(String.format("%s/%s/meta", RestController.BASE_URI,
+				this.refEntity = refEntity != null ? new Href(Href.concatMetaEntityHref(RestController.BASE_URI,
 						refEntity.getName())) : null;
 			}
 		}
@@ -108,17 +126,23 @@ public class AttributeMetaDataResponse
 							{
 								Set<String> subAttributesSet = attributeExpandsSet.get("attributes".toLowerCase());
 								return new AttributeMetaDataResponse(entityParentName, attributeMetaData,
-										subAttributesSet, null);
+										subAttributesSet, null, permissionService);
 							}
 							else
 							{
-								return Collections.<String, Object> singletonMap("href", String.format("%s/%s/meta/%s",
+								return Collections.<String, Object> singletonMap("href", Href.concatMetaAttributeHref(
 										RestController.BASE_URI, entityParentName, attributeMetaData.getName()));
 							}
 						}
 					})) : null;
 		}
 		else this.attributes = null;
+
+		if (attributesSet == null || attributesSet.contains("auto".toLowerCase()))
+		{
+			this.auto = attr.isAuto();
+		}
+		else this.auto = null;
 
 		if (attributesSet == null || attributesSet.contains("nillable".toLowerCase()))
 		{
@@ -167,6 +191,12 @@ public class AttributeMetaDataResponse
 			this.range = attr.getRange();
 		}
 		else this.range = null;
+
+		if (attributesSet == null || attributesSet.contains("isVisible".toLowerCase()))
+		{
+			this.visible = attr.isVisible();
+		}
+		else this.visible = null;
 	}
 
 	public String getHref()
@@ -199,9 +229,19 @@ public class AttributeMetaDataResponse
 		return attributes;
 	}
 
+	public List<String> getEnumOptions()
+	{
+		return enumOptions;
+	}
+
 	public Object getRefEntity()
 	{
 		return refEntity;
+	}
+
+	public boolean isAuto()
+	{
+		return auto;
 	}
 
 	public boolean isNillable()
@@ -227,6 +267,11 @@ public class AttributeMetaDataResponse
 	public boolean isUnique()
 	{
 		return unique;
+	}
+
+	public boolean isVisible()
+	{
+		return visible;
 	}
 
 	public Boolean getLookupAttribute()
@@ -269,4 +314,8 @@ public class AttributeMetaDataResponse
 		return range;
 	}
 
+	public String getExpression()
+	{
+		return expression;
+	}
 }

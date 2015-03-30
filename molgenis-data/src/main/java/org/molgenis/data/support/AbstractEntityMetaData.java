@@ -3,7 +3,6 @@ package org.molgenis.data.support;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.log4j.Logger;
 import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.AttributeMetaData;
@@ -12,6 +11,8 @@ import org.molgenis.data.MolgenisDataException;
 import org.molgenis.data.Package;
 import org.molgenis.data.Range;
 import org.molgenis.fieldtypes.FieldType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
@@ -19,7 +20,7 @@ import com.google.common.collect.TreeTraverser;
 
 public abstract class AbstractEntityMetaData implements EntityMetaData
 {
-	private static Logger LOG = Logger.getLogger(AbstractEntityMetaData.class);
+	private static final Logger LOG = LoggerFactory.getLogger(AbstractEntityMetaData.class);
 
 	private String labelAttribute;
 	private String idAttribute;
@@ -86,6 +87,12 @@ public abstract class AbstractEntityMetaData implements EntityMetaData
 
 			@Override
 			public EntityMetaData getRefEntity()
+			{
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public String getExpression()
 			{
 				throw new UnsupportedOperationException();
 			}
@@ -260,6 +267,19 @@ public abstract class AbstractEntityMetaData implements EntityMetaData
 		}
 
 		return getIdAttribute();
+	}
+
+	@Override
+	public Iterable<AttributeMetaData> getLookupAttributes()
+	{
+		return Iterables.filter(getAttributesTraverser(), new Predicate<AttributeMetaData>()
+		{
+			@Override
+			public boolean apply(AttributeMetaData attribute)
+			{
+				return attribute.isLookupAttribute();
+			}
+		});
 	}
 
 	public void setLabelAttribute(String name)

@@ -3,12 +3,16 @@ package org.molgenis.ui;
 import static org.molgenis.ui.MolgenisMenuController.URI;
 import static org.molgenis.ui.MolgenisPluginAttributes.KEY_CONTEXT_URL;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
 
-import org.apache.log4j.Logger;
 import org.molgenis.framework.ui.MolgenisPluginController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
@@ -21,7 +25,7 @@ import org.springframework.web.servlet.HandlerMapping;
 @RequestMapping(URI)
 public class MolgenisMenuController
 {
-	private static final Logger logger = Logger.getLogger(MolgenisMenuController.class);
+	private static final Logger LOG = LoggerFactory.getLogger(MolgenisMenuController.class);
 
 	public static final String URI = "/menu";
 
@@ -42,7 +46,9 @@ public class MolgenisMenuController
 		if (molgenisBuildData == null) throw new IllegalArgumentException("molgenisBuildDate is null");
 		this.molgenisUi = molgenisUi;
 		this.molgenisVersion = molgenisVersion;
-		this.molgenisBuildData = molgenisBuildData;
+		// workaround for Eclipse bug: https://github.com/molgenis/molgenis/issues/2667
+		this.molgenisBuildData = molgenisBuildData.equals("${maven.build.timestamp}") ? new SimpleDateFormat(
+				"yyyy-MM-dd HH:mm").format(new Date()) + " by Eclipse" : molgenisBuildData;
 	}
 
 	@RequestMapping
@@ -56,7 +62,7 @@ public class MolgenisMenuController
 		MolgenisUiMenuItem activeItem = menu.getActiveItem();
 		if (activeItem == null)
 		{
-			logger.warn("main menu does not contain any (accessible) items");
+			LOG.warn("main menu does not contain any (accessible) items");
 			return "forward:/login";
 		}
 		String pluginId = activeItem.getId();
@@ -65,7 +71,7 @@ public class MolgenisMenuController
 		model.addAttribute(KEY_CONTEXT_URL, contextUri);
 		model.addAttribute(KEY_MOLGENIS_VERSION, molgenisVersion);
 		model.addAttribute(KEY_MOLGENIS_BUILD_DATE, molgenisBuildData);
-		return getForwardPluginUri(pluginId, null);
+		return getForwardPluginUri(activeItem.getUrl(), null);
 	}
 
 	@RequestMapping("/{menuId}")

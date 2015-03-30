@@ -44,6 +44,7 @@ public abstract class AbstractEntity implements Entity
 			case XREF:
 				Entity refEntity = getEntity(labelAttributeName);
 				return refEntity != null ? refEntity.getLabelValue() : null;
+			case CATEGORICAL_MREF:
 			case MREF:
 				Iterable<Entity> refEntities = getEntities(labelAttributeName);
 				if (refEntities != null)
@@ -64,12 +65,6 @@ public abstract class AbstractEntity implements Entity
 			default:
 				throw new RuntimeException("unsupported label data type " + dataType);
 		}
-	}
-
-	@Override
-	public void set(Entity entity)
-	{
-		set(entity, false);
 	}
 
 	@Override
@@ -130,7 +125,7 @@ public abstract class AbstractEntity implements Entity
 	public <E extends Entity> E getEntity(String attributeName, Class<E> clazz)
 	{
 		Entity entity = getEntity(attributeName);
-		return entity != null ? new ConvertingIterable<E>(clazz, Arrays.asList(entity)).iterator().next() : null;
+		return entity != null ? new ConvertingIterable<E>(clazz, Arrays.asList(entity), null).iterator().next() : null;
 	}
 
 	@Override
@@ -143,7 +138,7 @@ public abstract class AbstractEntity implements Entity
 	public <E extends Entity> Iterable<E> getEntities(String attributeName, Class<E> clazz)
 	{
 		Iterable<Entity> entities = getEntities(attributeName);
-		return entities != null ? new ConvertingIterable<E>(clazz, entities) : null;
+		return entities != null ? new ConvertingIterable<E>(clazz, entities, null) : null;
 	}
 
 	@Override

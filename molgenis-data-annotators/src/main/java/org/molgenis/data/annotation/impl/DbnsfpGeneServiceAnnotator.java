@@ -15,6 +15,7 @@ import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AnnotationService;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.HgncLocationsUtils;
 import org.molgenis.data.annotation.LocusAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.Locus;
@@ -108,7 +109,7 @@ public class DbnsfpGeneServiceAnnotator extends LocusAnnotator
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
 	}
@@ -158,7 +159,7 @@ public class DbnsfpGeneServiceAnnotator extends LocusAnnotator
 								}
 
 							}
-							results.add(getAnnotatedEntity(entity, resultMap));
+							results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 						}
 					}
 				}

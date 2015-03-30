@@ -1,11 +1,15 @@
 package org.molgenis.data.elasticsearch.index;
 
+import static org.molgenis.MolgenisFieldTypes.FieldTypeEnum.CATEGORICAL;
+import static org.molgenis.MolgenisFieldTypes.FieldTypeEnum.CATEGORICAL_MREF;
+import static org.molgenis.MolgenisFieldTypes.FieldTypeEnum.MREF;
+import static org.molgenis.MolgenisFieldTypes.FieldTypeEnum.XREF;
+
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.log4j.Logger;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
@@ -15,7 +19,8 @@ import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.Repository;
 import org.molgenis.data.elasticsearch.util.MapperTypeSanitizer;
-import org.molgenis.util.RepositoryUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Creates an IndexRequest for indexing entities with ElasticSearch
@@ -25,7 +30,8 @@ import org.molgenis.util.RepositoryUtils;
  */
 public class IndexRequestGenerator
 {
-	private static final Logger LOG = Logger.getLogger(IndexRequestGenerator.class);
+	private static final Logger LOG = LoggerFactory.getLogger(IndexRequestGenerator.class);
+
 	private final Client client;
 	private final String indexName;
 	private final EntityToSourceConverter entityToSourceConverter;
@@ -58,13 +64,14 @@ public class IndexRequestGenerator
 		for (AttributeMetaData attr : repository.getEntityMetaData().getAtomicAttributes())
 		{
 			FieldTypeEnum fieldType = attr.getDataType().getEnumType();
-			boolean isXrefOrMref = fieldType.equals(FieldTypeEnum.XREF) || fieldType.equals(FieldTypeEnum.MREF);
+			boolean isXrefOrMref = fieldType == XREF || fieldType == MREF || fieldType == CATEGORICAL
+					|| fieldType == CATEGORICAL_MREF;
 			if (isXrefOrMref) xrefAndMrefColumns.add(attr.getName());
 		}
 
 		return new Iterator<BulkRequestBuilder>()
 		{
-			private final long rows = RepositoryUtils.count(repository);
+			private final long rows = repository.count();
 			private static final int docsPerBulk = 1000;
 			private final Iterator<? extends Entity> it = repository.iterator();
 			private final EntityMetaData entityMetaData = repository.getEntityMetaData();

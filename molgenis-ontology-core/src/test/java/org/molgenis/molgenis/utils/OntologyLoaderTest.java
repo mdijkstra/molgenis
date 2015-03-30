@@ -5,14 +5,15 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
 import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 import org.molgenis.ontology.utils.OntologyLoader;
+import org.molgenis.ontology.utils.ZipFileUtil;
+import org.molgenis.util.ResourceUtils;
 import org.semanticweb.owlapi.model.IRI;
 import org.semanticweb.owlapi.model.OWLClass;
 import org.semanticweb.owlapi.model.OWLOntologyCreationException;
@@ -24,12 +25,11 @@ public class OntologyLoaderTest
 	OntologyLoader loader;
 
 	@BeforeMethod
-	public void setUp() throws OWLOntologyCreationException
+	public void setUp() throws OWLOntologyCreationException, FileNotFoundException, IOException
 	{
-		URL url = Thread.currentThread().getContextClassLoader().getResource("test-ontology-loader.owl");
-		File file = new File(url.getPath());
-
-		loader = new OntologyLoader("ontology-test", file);
+		File file = ResourceUtils.getFile("test-ontology-loader.owl.zip");
+		List<File> uploadedFiles = ZipFileUtil.unzip(file);
+		loader = new OntologyLoader("ontology-test", uploadedFiles.get(0));
 	}
 
 	@Test
@@ -46,8 +46,8 @@ public class OntologyLoaderTest
 		int count = 0;
 		for (OWLClass childClass : loader.getChildClass(topClasses.get(0)))
 		{
-			if (count == 0) assertEquals(childClass.getIRI(), childEntity.getIRI());
-			if (count == 1) assertEquals(childClass.getIRI(), parentEntity.getIRI());
+			if (count == 0) assertEquals(childClass.getIRI(), parentEntity.getIRI());
+			if (count == 1) assertEquals(childClass.getIRI(), childEntity.getIRI());
 			count++;
 		}
 	}
@@ -70,7 +70,7 @@ public class OntologyLoaderTest
 	{
 		List<OWLClass> topClasses = new ArrayList<OWLClass>(loader.getRootClasses());
 		Iterator<String> iterator = loader.getSynonyms(topClasses.get(0)).iterator();
-		if (iterator.hasNext()) assertEquals(iterator.next(), "People");
+		if (iterator.hasNext()) assertEquals(iterator.next(), "Person label test");
 
 	}
 

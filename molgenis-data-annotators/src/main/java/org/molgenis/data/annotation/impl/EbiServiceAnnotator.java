@@ -4,11 +4,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -18,6 +18,7 @@ import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AbstractRepositoryAnnotator;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.RepositoryAnnotator;
 import org.molgenis.data.support.DefaultAttributeMetaData;
 import org.molgenis.data.support.DefaultEntityMetaData;
@@ -71,7 +72,7 @@ public class EbiServiceAnnotator extends AbstractRepositoryAnnotator implements 
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
 	}
@@ -108,13 +109,19 @@ public class EbiServiceAnnotator extends AbstractRepositoryAnnotator implements 
 				HttpResponse response = httpClient.execute(httpGet);
 				BufferedReader br = new BufferedReader(new InputStreamReader((response.getEntity().getContent()),
 						Charset.forName("UTF-8")));
-
-				String output;
 				StringBuilder result = new StringBuilder();
-
-				while ((output = br.readLine()) != null)
+				try
 				{
-					result.append(output);
+					String output;
+
+					while ((output = br.readLine()) != null)
+					{
+						result.append(output);
+					}
+				}
+				finally
+				{
+					br.close();
 				}
 				resultEntities = parseResult(entity, result.toString());
 			}
@@ -147,7 +154,7 @@ public class EbiServiceAnnotator extends AbstractRepositoryAnnotator implements 
 			resultMap = (Map<String, Object>) rootMap.get("target");
 			resultMap.put(UNIPROT_ID, entity.get(UNIPROT_ID));
 		}
-		return Collections.singletonList(getAnnotatedEntity(entity, resultMap));
+		return Collections.singletonList(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 	}
 
 	private static Map<String, Object> jsonStringToMap(String result) throws IOException

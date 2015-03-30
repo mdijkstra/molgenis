@@ -4,17 +4,18 @@ import java.sql.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.elasticsearch.common.collect.Lists;
 import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.MolgenisDataException;
+import org.molgenis.data.support.EntityWithComputedAttributes;
 import org.molgenis.util.MolgenisDateFormat;
 import org.springframework.stereotype.Component;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 
 /**
  * Converts entities to Elasticsearch documents
@@ -57,6 +58,11 @@ public class EntityToSourceConverter
 
 	public Object convertAttribute(Entity entity, AttributeMetaData attributeMetaData, final boolean nestRefs)
 	{
+		if (attributeMetaData.getExpression() != null)
+		{
+			entity = new EntityWithComputedAttributes(entity);
+		}
+
 		Object value;
 
 		String attrName = attributeMetaData.getName();
@@ -114,6 +120,7 @@ public class EntityToSourceConverter
 				}
 				break;
 			}
+			case CATEGORICAL_MREF:
 			case MREF:
 			{
 				final Iterable<Entity> refEntities = entity.getEntities(attrName);
@@ -158,7 +165,6 @@ public class EntityToSourceConverter
 	{
 		Object value;
 
-		String attrName = attributeMetaData.getName();
 		FieldTypeEnum dataType = attributeMetaData.getDataType().getEnumType();
 		switch (dataType)
 		{
@@ -203,6 +209,7 @@ public class EntityToSourceConverter
 				}
 				break;
 			}
+			case CATEGORICAL_MREF:
 			case MREF:
 			{
 				final Iterable<Entity> refEntities = (Iterable<Entity>) inputValue;

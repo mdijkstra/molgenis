@@ -24,7 +24,9 @@ import java.lang.reflect.Type;
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
+import org.molgenis.gson.AutoValueTypeAdapterFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpOutputMessage;
 import org.springframework.http.MediaType;
@@ -48,8 +50,8 @@ import com.google.gson.JsonSyntaxException;
  */
 public class GsonHttpMessageConverter extends BaseHttpMessageConverter<Object>
 {
+	private static final Logger LOG = LoggerFactory.getLogger(GsonHttpMessageConverter.class);
 
-	private static final Logger LOG = Logger.getLogger(GsonHttpMessageConverter.class);
 	private final Gson gson;
 	private Type type = null;
 	private boolean prefixJson = false;
@@ -77,6 +79,7 @@ public class GsonHttpMessageConverter extends BaseHttpMessageConverter<Object>
 			builder = builder.setPrettyPrinting();
 		}
 
+		builder.registerTypeAdapterFactory(new AutoValueTypeAdapterFactory());
 		gson = builder.create();
 	}
 
@@ -264,9 +267,16 @@ public class GsonHttpMessageConverter extends BaseHttpMessageConverter<Object>
 
 	private String getCallbackParam()
 	{
-		HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
-				.getRequest();
-		return request.getParameter("callback");
+		try
+		{
+			HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
+					.getRequest();
+			return request.getParameter("callback");
+		}
+		catch (IllegalStateException ex)
+		{
+			return null;
+		}
 	}
 
 }

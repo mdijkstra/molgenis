@@ -4,6 +4,7 @@ import static org.molgenis.framework.ui.ResourcePathPatterns.PATTERN_CSS;
 import static org.molgenis.framework.ui.ResourcePathPatterns.PATTERN_FONTS;
 import static org.molgenis.framework.ui.ResourcePathPatterns.PATTERN_IMG;
 import static org.molgenis.framework.ui.ResourcePathPatterns.PATTERN_JS;
+import static org.molgenis.security.runas.RunAsSystemProxy.runAsSystem;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,28 +12,33 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-import org.molgenis.data.CrudRepository;
-import org.molgenis.data.CrudRepositorySecurityDecorator;
+import javax.annotation.PostConstruct;
+import javax.sql.DataSource;
+
+import org.molgenis.data.AutoValueRepositoryDecorator;
 import org.molgenis.data.DataService;
-import org.molgenis.data.EntityMetaData;
-import org.molgenis.data.IndexedCrudRepository;
+import org.molgenis.data.IdGenerator;
+import org.molgenis.data.IndexedAutoValueRepositoryDecorator;
 import org.molgenis.data.IndexedCrudRepositorySecurityDecorator;
-import org.molgenis.data.MolgenisDataException;
+import org.molgenis.data.IndexedRepository;
+import org.molgenis.data.ManageableRepositoryCollection;
 import org.molgenis.data.Repository;
 import org.molgenis.data.RepositoryDecoratorFactory;
+import org.molgenis.data.RepositorySecurityDecorator;
 import org.molgenis.data.convert.DateToStringConverter;
 import org.molgenis.data.convert.StringToDateConverter;
-import org.molgenis.data.elasticsearch.ElasticsearchRepositoryDecorator;
 import org.molgenis.data.elasticsearch.SearchService;
-import org.molgenis.data.elasticsearch.meta.IndexingWritableMetaDataServiceDecorator;
-import org.molgenis.data.meta.AttributeMetaDataMetaData;
+import org.molgenis.data.elasticsearch.factory.EmbeddedElasticSearchServiceFactory;
+import org.molgenis.data.elasticsearch.index.EntityToSourceConverter;
 import org.molgenis.data.meta.EntityMetaDataMetaData;
-import org.molgenis.data.meta.PackageMetaData;
-import org.molgenis.data.meta.WritableMetaDataService;
-import org.molgenis.data.meta.WritableMetaDataServiceDecorator;
+import org.molgenis.data.meta.MetaDataService;
+import org.molgenis.data.meta.MetaDataServiceImpl;
+import org.molgenis.data.support.DataServiceImpl;
+import org.molgenis.data.support.UuidGenerator;
 import org.molgenis.data.validation.EntityAttributesValidator;
 import org.molgenis.data.validation.IndexedRepositoryValidationDecorator;
 import org.molgenis.data.validation.RepositoryValidationDecorator;
+import org.molgenis.data.version.MetaDataUpgradeService;
 import org.molgenis.framework.db.WebAppDatabasePopulator;
 import org.molgenis.framework.db.WebAppDatabasePopulatorService;
 import org.molgenis.framework.server.MolgenisSettings;
@@ -44,7 +50,6 @@ import org.molgenis.security.CorsInterceptor;
 import org.molgenis.security.core.MolgenisPermissionService;
 import org.molgenis.security.freemarker.HasPermissionDirective;
 import org.molgenis.security.freemarker.NotHasPermissionDirective;
-import org.molgenis.system.core.RuntimeProperty;
 import org.molgenis.ui.freemarker.FormLinkDirective;
 import org.molgenis.ui.freemarker.LimitMethod;
 import org.molgenis.ui.menu.MenuMolgenisUi;
@@ -54,9 +59,12 @@ import org.molgenis.ui.menumanager.MenuManagerService;
 import org.molgenis.ui.menumanager.MenuManagerServiceImpl;
 import org.molgenis.ui.security.MolgenisUiPermissionDecorator;
 import org.molgenis.util.ApplicationContextProvider;
+import org.molgenis.util.DependencyResolver;
 import org.molgenis.util.FileStore;
 import org.molgenis.util.GsonHttpMessageConverter;
 import org.molgenis.util.ResourceFingerprintRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationListener;
@@ -86,6 +94,8 @@ import freemarker.template.TemplateException;
 
 public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 {
+	private final Logger LOG = LoggerFactory.getLogger(getClass());
+
 	@Autowired
 	private MolgenisSettings molgenisSettings;
 
@@ -95,11 +105,17 @@ public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 	@Autowired
 	private WebAppDatabasePopulatorService webAppDatabasePopulatorService;
 
-	// temporary workaround for module dependencies
 	@Autowired
-	private DataService dataService;
+	public SearchService searchService;
+
 	@Autowired
-	private SearchService elasticSearchService;
+	public EmbeddedElasticSearchServiceFactory embeddedElasticSearchServiceFactory;
+
+	@Autowired
+	public MetaDataUpgradeService metaDataUpgradeService;
+
+	@Autowired
+	public DataSource dataSource;
 
 	@Override
 	public void addResourceHandlers(ResourceHandlerRegistry registry)
@@ -114,13 +130,13 @@ public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 		registry.addResourceHandler("/html/**").addResourceLocations("/html/", "classpath:/html/").setCachePeriod(3600);
 	}
 
-	@Value("${molgenis.build.profile}")
-	private String molgenisBuildProfile;
+	@Value("${environment:production}")
+	private String environment;
 
 	@Override
 	public void configureMessageConverters(List<HttpMessageConverter<?>> converters)
 	{
-		boolean prettyPrinting = molgenisBuildProfile != null && molgenisBuildProfile.equals("dev");
+		boolean prettyPrinting = environment != null && environment.equals("development");
 		converters.add(new GsonHttpMessageConverter(prettyPrinting));
 		converters.add(new BufferedImageHttpMessageConverter());
 		converters.add(new CsvHttpMessageConverter());
@@ -163,13 +179,13 @@ public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 	@Bean
 	public MolgenisInterceptor molgenisInterceptor()
 	{
-		return new MolgenisInterceptor(resourceFingerprintRegistry(), molgenisSettings);
+		return new MolgenisInterceptor(resourceFingerprintRegistry(), molgenisSettings, environment);
 	}
 
 	@Bean
 	public MolgenisPluginInterceptor molgenisPluginInterceptor()
 	{
-		return new MolgenisPluginInterceptor(molgenisUi());
+		return new MolgenisPluginInterceptor(molgenisUi(), molgenisSettings);
 	}
 
 	@Bean
@@ -345,20 +361,85 @@ public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 		return new CorsInterceptor();
 	}
 
-	// temporary workaround for module dependencies
+	protected abstract ManageableRepositoryCollection getBackend();
+
+	protected abstract void addReposToReindex(DataServiceImpl localDataService);
+
+	protected void reindex()
+	{
+		// Create local dataservice and metadataservice
+		DataServiceImpl localDataService = new DataServiceImpl();
+		new MetaDataServiceImpl(localDataService);
+
+		addReposToReindex(localDataService);
+
+		SearchService localSearchService = embeddedElasticSearchServiceFactory.create(localDataService,
+				new EntityToSourceConverter());
+
+		DependencyResolver.resolve(localDataService).forEach(repo -> {
+			localSearchService.rebuildIndex(repo, repo.getEntityMetaData());
+		});
+	}
+
+	@PostConstruct
+	public void validateMolgenisServerProperties()
+	{
+		// validate properties defined in molgenis-server.properties
+		String path = System.getProperty("molgenis.home") + File.separator + "molgenis-server.properties";
+		if (environment == null)
+		{
+			throw new RuntimeException("Missing required property 'environment' in " + path
+					+ ", allowed values are [development, production].");
+		}
+		else if (!environment.equals("development") && !environment.equals("production"))
+		{
+			throw new RuntimeException("Invalid value '" + environment + "' for property 'environment' in " + path
+					+ ", allowed values are [development, production].");
+		}
+	}
+
+	@PostConstruct
+	public void initRepositories()
+	{
+		addUpgrades();
+		metaDataUpgradeService.upgrade();
+		if (!indexExists())
+		{
+			LOG.info("Reindexing repositories....");
+			reindex();
+			LOG.info("Reindexing done.");
+		}
+		else
+		{
+			LOG.info("Index found. No need to reindex.");
+		}
+		runAsSystem(() -> metaDataService().setDefaultBackend(getBackend()));
+	}
+
+	private boolean indexExists()
+	{
+		return searchService.hasMapping(new EntityMetaDataMetaData());
+	}
 
 	@Bean
-	WritableMetaDataServiceDecorator writableMetaDataServiceDecorator()
+	public DataService dataService()
 	{
-		return new WritableMetaDataServiceDecorator()
-		{
-			@Override
-			public WritableMetaDataService decorate(WritableMetaDataService metaDataRepositories)
-			{
-				return new IndexingWritableMetaDataServiceDecorator(metaDataRepositories, dataService,
-						elasticSearchService);
-			}
-		};
+		return new DataServiceImpl(repositoryDecoratorFactory());
+	}
+
+	@Bean
+	public MetaDataService metaDataService()
+	{
+		DataService dataService = dataService();
+		MetaDataService metaDataService = new MetaDataServiceImpl((DataServiceImpl) dataService);
+
+		return metaDataService;
+	}
+
+	@Bean
+	public IdGenerator molgenisIdGenerator()
+	{
+		return new UuidGenerator();
 	}
 
 	@Bean
@@ -369,61 +450,26 @@ public abstract class MolgenisWebAppConfig extends WebMvcConfigurerAdapter
 			@Override
 			public Repository createDecoratedRepository(Repository repository)
 			{
-				// do not index an indexed repository
-				if (repository instanceof IndexedCrudRepository)
+				// 1. security decorator
+				// 2. autoid decorator
+				// 3. validation decorator
+				if (repository instanceof IndexedRepository)
 				{
-					// 1. security decorator
-					// 2. validation decorator
-					// 3. indexed repository
-					return new IndexedCrudRepositorySecurityDecorator(new IndexedRepositoryValidationDecorator(
-							dataService, (IndexedCrudRepository) repository, new EntityAttributesValidator()),
-							molgenisSettings);
+					IndexedRepository indexedRepos = (IndexedRepository) repository;
+
+					return new IndexedCrudRepositorySecurityDecorator(new IndexedAutoValueRepositoryDecorator(
+							new IndexedRepositoryValidationDecorator(dataService(), indexedRepos,
+									new EntityAttributesValidator()), molgenisIdGenerator()), molgenisSettings);
 				}
-				else
-				{
-					EntityMetaData entityMetaData = repository.getEntityMetaData();
 
-					if (RuntimeProperty.ENTITY_NAME.equalsIgnoreCase(entityMetaData.getName()))
-					{
-						// Do not index RuntimeProperty, because lucene term has a max of 32766 bytes and the content of
-						// a RuntimeProperty can exceed this (for example the menu structure in JSON and the static
-						// plugin contents are stored in a RuntimeProperty)
-						return new CrudRepositorySecurityDecorator(new RepositoryValidationDecorator(dataService,
-								(CrudRepository) repository, new EntityAttributesValidator()));
-					}
-
-					// create indexing meta data if meta data does not exist
-					if (!elasticSearchService.hasMapping(entityMetaData))
-					{
-						try
-						{
-							elasticSearchService.createMappings(entityMetaData);
-						}
-						catch (IOException e)
-						{
-							throw new MolgenisDataException(e);
-						}
-					}
-
-					// 1. security decorator
-					// 2. validation decorator
-					// 3. indexing decorator
-					// 4. repository
-					IndexedCrudRepository indexedRepo = new ElasticsearchRepositoryDecorator(repository,
-							elasticSearchService);
-					if (AttributeMetaDataMetaData.ENTITY_NAME.equals(entityMetaData.getName())
-							|| EntityMetaDataMetaData.ENTITY_NAME.equals(entityMetaData.getName())
-							|| PackageMetaData.ENTITY_NAME.equals(entityMetaData.getName()))
-					{
-						// TODO: help! how to prevent all sorts of nasty security warnings and String -> Xref entity
-						// conversion hiccups upon construction of the application context?
-						return indexedRepo;
-					}
-
-					return new IndexedCrudRepositorySecurityDecorator(new IndexedRepositoryValidationDecorator(
-							dataService, indexedRepo, new EntityAttributesValidator()), molgenisSettings);
-				}
+				return new RepositorySecurityDecorator(new AutoValueRepositoryDecorator(new RepositoryValidationDecorator(
+						dataService(), repository, new EntityAttributesValidator()), molgenisIdGenerator()));
 			}
 		};
 	}
+
+	/**
+	 * Adds the upgrade steps to the {@link MetaDataUpgradeService}.
+	 */
+	public abstract void addUpgrades();
 }

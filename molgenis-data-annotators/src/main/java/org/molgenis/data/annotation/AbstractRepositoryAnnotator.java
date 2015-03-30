@@ -1,8 +1,10 @@
 package org.molgenis.data.annotation;
 
+import org.molgenis.MolgenisFieldTypes;
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
+import org.molgenis.data.support.DefaultAttributeMetaData;
 import org.molgenis.data.support.DefaultEntityMetaData;
 import org.molgenis.data.support.MapEntity;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +34,7 @@ public abstract class AbstractRepositoryAnnotator implements RepositoryAnnotator
 	}
 
 	@Override
-	public boolean canAnnotate(EntityMetaData repoMetaData)
+	public String canAnnotate(EntityMetaData repoMetaData)
 	{
 		Iterable<AttributeMetaData> annotatorAttributes = getInputMetaData().getAttributes();
 		for (AttributeMetaData annotatorAttribute : annotatorAttributes)
@@ -40,38 +42,39 @@ public abstract class AbstractRepositoryAnnotator implements RepositoryAnnotator
 			// one of the needed attributes not present? we can not annotate
 			if (repoMetaData.getAttribute(annotatorAttribute.getName()) == null)
 			{
-				return false;
+				return "missing required attribute";
 			}
 
 			// one of the needed attributes not of the correct type? we can not annotate
 			if (!repoMetaData.getAttribute(annotatorAttribute.getName()).getDataType()
 					.equals(annotatorAttribute.getDataType()))
 			{
-				return false;
+				return "a required attribute has the wrong datatype";
 			}
 
 			// Are the runtime property files not available, or is a webservice down? we can not annotate
 			if (!annotationDataExists())
 			{
-				return false;
+				return "annotation datasource unreachable";
 			}
 		}
 
-		return true;
+		return "true";
 	}
 
 	/**
 	 * Checks if folder and files that were set with a runtime property actually exist, or if a webservice can be
 	 * reached
-	 * 
+	 *
 	 * @return boolean
-	 * */
+	 */
 	protected abstract boolean annotationDataExists();
 
 	@Override
 	@Transactional
-	public Iterator<Entity> annotate(final Iterator<Entity> source)
+	public Iterator<Entity> annotate(final Iterable<Entity> sourceIterable)
 	{
+		Iterator<Entity> source = sourceIterable.iterator();
 		return new Iterator<Entity>()
 		{
 			int current = 0;
@@ -133,20 +136,10 @@ public abstract class AbstractRepositoryAnnotator implements RepositoryAnnotator
 
 	public abstract List<Entity> annotateEntity(Entity entity) throws IOException, InterruptedException;
 
-	public Entity getAnnotatedEntity(Entity entity, Map<String, Object> resultMap)
+	@Override
+	public String getFullName()
 	{
-		DefaultEntityMetaData resultEntityMetadata = new DefaultEntityMetaData(entity.getEntityMetaData());
-		MapEntity resultEntity = new MapEntity(entity, resultEntityMetadata);
-		for (AttributeMetaData attributeMetaData : getOutputMetaData().getAtomicAttributes())
-		{
-			resultEntityMetadata.addAttributeMetaData(attributeMetaData);
-			resultEntity.set(attributeMetaData.getName(), resultMap.get(attributeMetaData.getName()));
-		}
-		return resultEntity;
+		return RepositoryAnnotator.ANNOTATOR_PREFIX + getSimpleName();
 	}
 
-	public String getLabel()
-	{
-		return getName();
-	}
 }

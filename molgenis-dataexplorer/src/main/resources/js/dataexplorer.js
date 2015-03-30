@@ -1,6 +1,5 @@
 $.when( $, 
-		window.top.molgenis = window.top.molgenis || {}, 
-		$.get('dataexplorer/settings') 
+		window.top.molgenis = window.top.molgenis || {}, $.get('/menu/main/dataexplorer/settings')
 ).then(
 function($, molgenis, settingsXhr) {	
 	"use strict";
@@ -34,6 +33,16 @@ function($, molgenis, settingsXhr) {
 	}
 	var settings = settingsXhr[0];
 	self.settings = settings;
+
+	var stateDefault = {
+		entity: null,
+		query: null,
+		attrs: null,
+		mod: null,
+		hideselect: 'false'
+	};
+	
+	var state;
 	
 	/**
 	 * @memberOf molgenis.dataexplorer
@@ -53,25 +62,27 @@ function($, molgenis, settingsXhr) {
 	 * @memberOf molgenis.dataexplorer
 	 */
 	function getEntityQuery() {
+		// N.B. There's a translation step between the query in the state, which is also shown on screen
+		// ("SEARCH 1:10050001") and the actual entity query which is used when retrieving data
+		// (CHROM = 1 AND POS = 1005001)
+		// So here we should return the *translated* query.
 		return createEntityQuery();
 	}
 	
 	/**
 	 * @memberOf molgenis.dataexplorer
 	 */
-	function createModuleNav(modules, container) {
+	function createModuleNav(modules, entity, container) {
 		var items = [];
 		items.push('<ul class="nav nav-tabs pull-left" role="tablist">');
 		$.each(modules, function() {
-			var href = molgenis.getContextUrl() + '/module/' + this.id+'?entity=' + selectedEntityMetaData.name;
-
-
-			items.push('<li data-id="' + this.id + '"><a href="' + href + '" data-target="#tab-' + this.id + '" role="tab" data-toggle="tab"><img src="/img/' + this.icon + '"> ' + this.label + '</a></li>');
+			var href = molgenis.getContextUrl() + '/module/' + this.id+'?entity=' + entity;
+			items.push('<li data-id="' + this.id + '"><a href="' + href + '" data-target="#tab-' + this.id + '" data-id="' + this.id + '" role="tab" data-toggle="tab"><img src="/img/' + this.icon + '"> ' + this.label + '</a></li>');
 		});
 		items.push('</ul>');
 		items.push('<div class="tab-content">');
 		$.each(modules, function() {
-			items.push('<div class="tab-pane" id="tab-' + this.id + '">Loading...</div>');
+			items.push('<div class="tab-pane" id="tab-' + this.id + '" data-id="' + this.id + '">Loading...</div>');
 		});
 		items.push('</div>');
 		
@@ -89,7 +100,7 @@ function($, molgenis, settingsXhr) {
 			'selectedAttributes' : attributes,
 			'onAttributesSelect' : function(selects) {
 				selectedAttributes = container.tree('getSelectedAttributes');
-				$(document).trigger('changeAttributeSelection', {'attributes': selectedAttributes});
+				$(document).trigger('changeAttributeSelection', {'attributes': selectedAttributes, 'totalNrAttributes': Object.keys(entityMetaData.attributes).length});
 			},
 			'onAttributeClick' : function(attribute) {
 				$(document).trigger('clickAttribute', {'attribute': attribute});
@@ -155,7 +166,7 @@ function($, molgenis, settingsXhr) {
 			if (/\S/.test(searchQuery)) {
 				var searchQueryRegex = /^\s*(?:chr)?([\d]{1,2}|X|Y|MT|XY):([\d]+)(?:-([\d]+)+)?\s*$/g;
 				
-				if(searchQueryRegex && searchQuery.match(searchQueryRegex)) {
+				if(searchQueryRegex && searchQuery.match(searchQueryRegex) && chromosomeAttribute !== undefined && posAttribute !== undefined) {
 					var match = searchQueryRegex.exec(searchQuery);
 					
 					// only chromosome and position
@@ -167,7 +178,7 @@ function($, molgenis, settingsXhr) {
 				        	    [{
 				        	        operator: "NESTED",
 				        	        nestedRules: [{
-				        	            field: chromosomeAttribute,
+				        	            field: chromosomeAttribute.name,
 				        	            operator: "EQUALS",
 				        	            value: chromosome
 				        	        }]
@@ -176,7 +187,7 @@ function($, molgenis, settingsXhr) {
 				        	    }, {
 				        	        operator: "NESTED",
 				        	        nestedRules: [{
-				        	            field: posAttribute,
+				        	            field: posAttribute.name,
 				        	            operator: "EQUALS",
 				        	            value: position
 				        	        }]
@@ -200,7 +211,7 @@ function($, molgenis, settingsXhr) {
 						        nestedRules: [{
 							            operator: "NESTED",
 							            nestedRules: [{
-							                field: chromosomeAttribute,
+							                field: chromosomeAttribute.name,
 							                operator: "EQUALS",
 							                value: chromosome
 						            }]
@@ -210,13 +221,13 @@ function($, molgenis, settingsXhr) {
 						    }, {
 						    	operator: "NESTED",
 						        nestedRules: [{
-				                    field: posAttribute,
+				                    field: posAttribute.name,
 				                    operator: "GREATER_EQUAL",
 				                    value: startPosition
 				                }, {
 				                	operator: "AND"
 				                }, {
-				                    field: posAttribute,
+				                    field: posAttribute.name,
 				                    operator: "LESS_EQUAL",
 				                    value: stopPosition
 				                }]
@@ -255,13 +266,102 @@ function($, molgenis, settingsXhr) {
 		return entityCollectionRequest;
 	}
 	
+	function render() {
+		// get entity meta data and update header and tree 
+		var entityMetaDataRequest = restApi.getAsync('/api/v1/' + state.entity + '/meta', {'expand': ['attributes']}, function(entityMetaData) {
+			selectedEntityMetaData = entityMetaData;
+			
+			self.createHeader(entityMetaData);
+			
+			selectedAttributes = $.map(entityMetaData.attributes, function(attribute) {
+				if(state.attrs === undefined || state.attrs === null) return attribute.fieldType !== 'COMPOUND' ? attribute : null;
+				else if(state.attrs === 'none') return null;
+				else return state.attrs.indexOf(attribute.name) !== -1 && attribute.fieldType !== 'COMPOUND' ? attribute : null;
+			});
+			
+			createEntityMetaTree(entityMetaData, selectedAttributes);
+			
+			//Show wizard on show of dataexplorer if url param 'wizard=true' is added
+			if (settings['wizard.oninit'] && settings['wizard.oninit'] === 'true') {
+				self.filter.wizard.openFilterWizardModal(entityMetaData, attributeFilters);
+			}
+		});
+		
+		// get entity modules and load visible module
+		$.get(molgenis.getContextUrl() + '/modules?entity=' + state.entity).done(function(data) {
+			var container = $('#module-nav');
+			createModuleNav(data.modules, state.entity, container);
+			
+			// select first tab
+			var moduleTab;
+			if(state.mod) {
+				moduleTab = $('a[data-toggle="tab"][data-target="#tab-' + state.mod + '"]', container);
+			} else {
+				moduleTab = $('a[data-toggle="tab"]', container).first();
+			}
+			
+			// show tab once entity meta data is available
+			$.when(entityMetaDataRequest).done(function(){
+				moduleTab.tab('show');
+			});
+
+            function hideSelectors() {
+                $('#selectors').removeClass("col-md-3").addClass("hidden");
+                $('#modules').removeClass("col-md-9").addClass("col-md-12");
+                $('#toggleSelectorsIcon').removeClass("glyphicon glyphicon-resize-horizontal").addClass("glyphicon glyphicon-resize-small");
+            }
+
+            function showSelectors() {
+                $('#selectors').addClass("col-md-3").removeClass("hidden");
+                $('#modules').removeClass("col-md-12").addClass("col-md-9");
+                $('#toggleSelectorsIcon').removeClass("glyphicon glyphicon-resize-small").addClass("glyphicon glyphicon-resize-horizontal");
+            }
+
+            $('#toggleSelectors').on('click', function(){
+                if($('#selectors').hasClass("hidden")){
+                    showSelectors();
+                }
+                else{
+                    hideSelectors();
+                }
+            });
+		});
+		
+		$('#observationset-search').focus();
+	}
+	
+	function pushState() {
+		// shorten URL by removing attributes with null or undefined values
+		var cleanState = {};
+		for (var key in state) {
+		    if (state.hasOwnProperty(key)) {
+		    	var val = state[key];
+		    	if(val) {
+		    		cleanState[key] = val;
+		    	}
+		    }
+		}
+		
+		// FIXME remove if clause as part of http://www.molgenis.org/ticket/3110
+		if(state.query) {
+			delete cleanState.query;
+	    	for (var i = 0; i < state.query.q.length; ++i) {
+				var rule = state.query.q[i];
+				if(rule.field === undefined && rule.operator === 'SEARCH') {
+					cleanState.query = { q: [rule] };
+					break;
+				}
+			}
+		}
+		
+		// update browser state
+		history.pushState(state, '', molgenis.getContextUrl() + '?' + $.param(cleanState));
+	}
+	
 	/**
 	 * @memberOf molgenis.dataexplorer
 	 */
 	$(function() {
-		
-		var searchTerm = $("#observationset-search").val();
-		
 		// lazy load tab contents
 		$(document).on('show.bs.tab', 'a[data-toggle="tab"]', function(e) {
 			var target = $($(e.target).attr('data-target'));
@@ -271,8 +371,21 @@ function($, molgenis, settingsXhr) {
 				});
 			}
 		});
+		
+		$(document).on('changeQuery', function(e, query) {
+			state.query = query;
+			pushState();
+		});
 			
-		$(document).on('changeEntity', function(e, entityUri) {
+		$(document).on('changeEntity', function(e, entity) {
+			// reset state
+			state = {
+				entity: entity,
+				attributes: [],
+				mod : null
+			};
+			pushState();
+			
 			// reset			
 			selectedEntityMetaData = null;
 			attributeFilters = {};
@@ -288,32 +401,27 @@ function($, molgenis, settingsXhr) {
 				$(document).off('.' + this.id);	
 			});
 			
-			restApi.getAsync(entityUri + '/meta', {'expand': ['attributes']}, function(entityMetaData) {
-				selectedEntityMetaData = entityMetaData;
-
-				// get modules config for this entity
-				$.get(molgenis.getContextUrl() + '/modules?entity=' + entityMetaData.name).done(function(data) {
-					modules = data.modules;
-					createModuleNav(data.modules, $('#module-nav'));
-				
-					selectedAttributes = $.map(entityMetaData.attributes, function(attribute) {
-						return attribute.fieldType !== 'COMPOUND' ? attribute : null;
-					});
-					
-					createEntityMetaTree(entityMetaData, selectedAttributes);
-					
-					// select first tab
-					$('a[data-toggle="tab"]', $('#module-nav')).first().click();
-					
-					//Show wizard on show of dataexplorer if url param 'wizard=true' is added
-					if (settings['wizard.oninit'] && settings['wizard.oninit'] === 'true') {
-						self.filter.wizard.openFilterWizardModal(selectedEntityMetaData, attributeFilters);
-					}
-					
+			render();
+		});
+		
+		$(document).on('changeModule', function(e, mod) {
+			state.mod = mod;
+			pushState();
+		});
+		
+		$(document).on('changeAttributeSelection', function(e, data) {
+			if(data.attributes.length === 0) {
+				state.attrs = 'none';
+			}
+			else if(data.attributes.length === data.totalNrAttributes) {
+				state.attrs = null;
+			}
+			else { 
+				state.attrs = $.map(data.attributes, function(attribute) {
+					return attribute.name;
 				});
-				
-				self.createHeader(entityMetaData);
-			});
+			}
+			pushState();
 		});
 		
 		$(document).on('updateAttributeFilters', function(e, data) {
@@ -348,13 +456,6 @@ function($, molgenis, settingsXhr) {
 			});
 		}
 
-		$("#observationset-search").focus();
-		
-		$("#observationset-search").change(function(e) {
-			searchQuery = $(this).val().trim();
-			$(document).trigger('changeQuery', createEntityQuery());
-		});
-		
 		$("#observationset-search").change(function(e) {
 			searchQuery = $(this).val().trim();
 			$(document).trigger('changeQuery', createEntityQuery());
@@ -369,6 +470,10 @@ function($, molgenis, settingsXhr) {
 			self.filter.wizard.openFilterWizardModal(selectedEntityMetaData, attributeFilters);
 		});
 
+		$('#module-nav').on('click', 'a', function(e) {
+			$(document).trigger('changeModule', $(this).data('id'));
+		});
+	
 		$(container).on('click', '.feature-filter-edit', function(e) {
 			e.preventDefault();
 			var filter = attributeFilters[$(this).data('href')];
@@ -380,16 +485,67 @@ function($, molgenis, settingsXhr) {
 			$(document).trigger('removeAttributeFilter', {'attributeUri': $(this).data('href')});
 		});
 		
-		// fire change event for selected option or first option in case of no selection
-		var selectedOption = $('#dataset-select option:not(:empty):selected');
-		if(selectedOption.length === 0)
-			selectedOption = $('#dataset-select option:not(:empty)').first();
-		$(document).trigger('changeEntity', selectedOption.val());
-		
-		// restore the search term and trigger change event to filter data table
-		if(searchTerm){
-			$("#observationset-search").val(searchTerm).change();
+		$('#delete').on('click', function(){
+			bootbox.confirm("Are you sure you want to delete all data and metadata for this entity?", function(confirmed){
+				if(confirmed){
+					$.ajax('/api/v1/'+selectedEntityMetaData.name+'/meta', {'type': 'DELETE'}).done(function(){
+						$.post(molgenis.getContextUrl() + '/removeEntityFromMenu/' + selectedEntityMetaData.name).done(function(){
+							document.location.href = "/menu/main/dataexplorer";
+						});
+					});
+				}
+			});
+		});
+
+		function init() {
+			// set entity in dropdown
+			if(!state.entity) {
+				state.entity = $('#dataset-select option:not(:empty)').first().val();
+			}
+			$('#dataset-select').select2('val', state.entity);
+			
+			// hide entity dropdown
+			if(state.hideselect === 'true') {
+				$('#dataset-select-container').addClass('hidden');
+			} else {
+				$('#dataset-select-container').removeClass('hidden');
+			}
+			
+			if (state.query) {
+				// set query in searchbox
+				for (var i = 0; i < state.query.q.length; ++i) {
+					var rule = state.query.q[i];
+					if(rule.field === undefined && rule.operator === 'SEARCH') {
+						$('#observationset-search').val(rule.value).change();
+						break;
+					}
+				}
+				
+				// set filters in filter list
+				// FIXME implement as part of http://www.molgenis.org/ticket/3110
+			}
+			
+			render();
 		}
 		
+		// set state from url
+		if(window.location.search && window.location.search.length > 0) {
+			var querystring = window.location.search.substring(1); // remove '?'
+			if(querystring.length > 0) {
+				state = $.deparam(querystring);
+			}
+		} else {
+			state = stateDefault;
+		}
+
+		// handle browser back event
+		window.onpopstate = function(event) {
+			if (event.state !== null) {
+				state = event.state;
+				init();
+			}
+		};
+		
+		init();
 	});
 });

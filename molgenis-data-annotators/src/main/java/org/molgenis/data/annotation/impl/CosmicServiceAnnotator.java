@@ -5,11 +5,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
-import java.util.Map;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -19,6 +19,7 @@ import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AbstractRepositoryAnnotator;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.RepositoryAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.CosmicData;
 import org.molgenis.data.support.DefaultAttributeMetaData;
@@ -72,7 +73,7 @@ public class CosmicServiceAnnotator extends AbstractRepositoryAnnotator implemen
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
 	}
@@ -109,13 +110,19 @@ public class CosmicServiceAnnotator extends AbstractRepositoryAnnotator implemen
 				HttpResponse response = httpClient.execute(httpGet);
 				BufferedReader br = new BufferedReader(new InputStreamReader((response.getEntity().getContent()),
 						Charset.forName("UTF-8")));
-
-				String output;
 				StringBuilder result = new StringBuilder();
-
-				while ((output = br.readLine()) != null)
+				try
 				{
-					result.append(output);
+					String output;
+
+					while ((output = br.readLine()) != null)
+					{
+						result.append(output);
+					}
+				}
+				finally
+				{
+					br.close();
 				}
 				resultEntities.addAll(parseResult(entity, result.toString()));
 			}
@@ -157,7 +164,7 @@ public class CosmicServiceAnnotator extends AbstractRepositoryAnnotator implemen
 				resultMap.put(STRAND, data.getStrand());
 				resultMap.put(START, data.getStart());
 				resultMap.put(ENSEMBLE_ID, entity.get(ENSEMBLE_ID));
-				results.add(getAnnotatedEntity(entity, resultMap));
+				results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 			}
 		}
 		return results;

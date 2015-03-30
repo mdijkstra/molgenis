@@ -1,12 +1,14 @@
 package org.molgenis.data.mysql;
 
-import org.apache.log4j.Logger;
 import org.molgenis.AppConfig;
 import org.molgenis.MolgenisFieldTypes;
+import org.molgenis.data.DataService;
 import org.molgenis.data.Entity;
 import org.molgenis.data.support.DefaultEntityMetaData;
 import org.molgenis.data.support.MapEntity;
 import org.molgenis.data.support.QueryImpl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
@@ -19,9 +21,10 @@ import com.google.common.collect.Lists;
 @ContextConfiguration(classes = AppConfig.class)
 public class MysqlRepositoryCountTest extends AbstractTestNGSpringContextTests
 {
+	private static final Logger LOG = LoggerFactory.getLogger(MysqlRepositoryCountTest.class);
+
 	@Autowired
-	MysqlRepositoryCollection coll;
-	Logger logger = Logger.getLogger(getClass());
+	DataService dataService;
 
 	@Test
 	public void test()
@@ -41,10 +44,8 @@ public class MysqlRepositoryCountTest extends AbstractTestNGSpringContextTests
 		personMD.addAttribute("active").setDataType(MolgenisFieldTypes.BOOL);
 		personMD.addAttribute("country").setDataType(MolgenisFieldTypes.XREF).setRefEntity(countryMD);
 
-		coll.dropEntityMetaData(personMD.getName());
-		coll.dropEntityMetaData(countryMD.getName());
-		MysqlRepository countries = (MysqlRepository) coll.add(countryMD);
-		MysqlRepository persons = (MysqlRepository) coll.add(personMD);
+		MysqlRepository countries = (MysqlRepository) dataService.getMeta().addEntityMeta(countryMD);
+		MysqlRepository persons = (MysqlRepository) dataService.getMeta().addEntityMeta(personMD);
 
 		// add country entities to repo
 		Entity c = new MapEntity();
@@ -102,7 +103,7 @@ public class MysqlRepositoryCountTest extends AbstractTestNGSpringContextTests
 		Assert.assertEquals(persons.count(new QueryImpl().gt("height", 165).or().lt("height", 165)), 2);
 
 		// bool
-		logger.debug(persons.getSelectSql(new QueryImpl().eq("active", true), Lists.newArrayList()));
+		LOG.debug(persons.getSelectSql(new QueryImpl().eq("active", true), Lists.newArrayList()));
 		Assert.assertEquals(persons.count(new QueryImpl().eq("active", true)), 2);
 		Assert.assertEquals(persons.count(new QueryImpl().eq("active", false)), 1);
 		Assert.assertEquals(persons.count(new QueryImpl().eq("active", true).or().eq("height", 165)), 3);

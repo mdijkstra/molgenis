@@ -2,13 +2,19 @@ package org.molgenis.data.rest;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.molgenis.data.AttributeMetaData;
 import org.molgenis.data.EntityMetaData;
+import org.molgenis.security.core.MolgenisPermissionService;
+import org.molgenis.security.core.Permission;
 
+import com.google.common.base.Function;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 
 public class EntityMetaDataResponse
 {
@@ -19,6 +25,12 @@ public class EntityMetaDataResponse
 	private final Map<String, Object> attributes;
 	private final String labelAttribute;
 	private final String idAttribute;
+	private final List<String> lookupAttributes;
+	private final Boolean isAbstract;
+	/**
+	 * Is this user allowed to add/update/delete entities of this type?
+	 */
+	private final Boolean writable;
 
 	/**
 	 * 
@@ -29,10 +41,10 @@ public class EntityMetaDataResponse
 	 *            set of lowercase attribute names to expand in response
 	 */
 	public EntityMetaDataResponse(EntityMetaData meta, Set<String> attributesSet,
-			Map<String, Set<String>> attributeExpandsSet)
+			Map<String, Set<String>> attributeExpandsSet, MolgenisPermissionService permissionService)
 	{
 		String name = meta.getName();
-		this.href = String.format("%s/%s/meta", RestController.BASE_URI, name);
+		this.href = Href.concatMetaEntityHref(RestController.BASE_URI, name);
 
 		if (attributesSet == null || attributesSet.contains("name".toLowerCase()))
 		{
@@ -58,17 +70,17 @@ public class EntityMetaDataResponse
 
 			for (AttributeMetaData attr : meta.getAttributes())
 			{
-				if (attr.isVisible() && !attr.getName().equals("__Type"))
+				if (!attr.getName().equals("__Type"))
 				{
 					if (attributeExpandsSet != null && attributeExpandsSet.containsKey("attributes".toLowerCase()))
 					{
 						Set<String> subAttributesSet = attributeExpandsSet.get("attributes".toLowerCase());
 						this.attributes.put(attr.getName(), new AttributeMetaDataResponse(name, attr, subAttributesSet,
-								null));
+								null, permissionService));
 					}
 					else
 					{
-						String attrHref = String.format("%s/%s/meta/%s", RestController.BASE_URI, name, attr.getName());
+						String attrHref = Href.concatMetaAttributeHref(RestController.BASE_URI, name, attr.getName());
 						this.attributes.put(attr.getName(), Collections.singletonMap("href", attrHref));
 					}
 				}
@@ -89,6 +101,29 @@ public class EntityMetaDataResponse
 			this.idAttribute = idAttribute != null ? idAttribute.getName() : null;
 		}
 		else this.idAttribute = null;
+
+		if (attributesSet == null || attributesSet.contains("lookupAttributes".toLowerCase()))
+		{
+			Iterable<AttributeMetaData> lookupAttributes = meta.getLookupAttributes();
+			this.lookupAttributes = lookupAttributes != null ? Lists.newArrayList(Iterables.transform(lookupAttributes,
+					new Function<AttributeMetaData, String>()
+					{
+						@Override
+						public String apply(AttributeMetaData attribute)
+						{
+							return attribute.getName();
+						}
+					})) : null;
+		}
+		else this.lookupAttributes = null;
+
+		if (attributesSet == null || attributesSet.contains("abstract".toLowerCase()))
+		{
+			isAbstract = meta.isAbstract();
+		}
+		else this.isAbstract = null;
+
+		this.writable = permissionService.hasPermissionOnEntity(name, Permission.WRITE);
 	}
 
 	public String getHref()
@@ -116,6 +151,11 @@ public class EntityMetaDataResponse
 		return idAttribute;
 	}
 
+	public List<String> getLookupAttributes()
+	{
+		return lookupAttributes;
+	}
+
 	public Map<String, Object> getAttributes()
 	{
 		return ImmutableMap.copyOf(attributes);
@@ -124,5 +164,15 @@ public class EntityMetaDataResponse
 	public String getLabelAttribute()
 	{
 		return labelAttribute;
+	}
+
+	public boolean isAbstract()
+	{
+		return isAbstract;
+	}
+
+	public Boolean getWritable()
+	{
+		return writable;
 	}
 }

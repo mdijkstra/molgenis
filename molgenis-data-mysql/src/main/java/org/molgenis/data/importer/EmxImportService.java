@@ -1,16 +1,19 @@
 package org.molgenis.data.importer;
 
 import java.io.File;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
-import org.apache.log4j.Logger;
+import org.molgenis.data.DataService;
 import org.molgenis.data.DatabaseAction;
+import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.RepositoryCollection;
-import org.molgenis.data.meta.WritableMetaDataService;
-import org.molgenis.data.mysql.MysqlRepositoryCollection;
+import org.molgenis.data.support.GenericImporterExtensions;
 import org.molgenis.framework.db.EntitiesValidationReport;
 import org.molgenis.framework.db.EntityImportReport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
@@ -21,62 +24,62 @@ import com.google.common.collect.Lists;
 @Component
 public class EmxImportService implements ImportService
 {
-	static final Logger logger = Logger.getLogger(EmxImportService.class);
-
-	private static final List<String> SUPPORTED_FILE_EXTENSIONS = Arrays.asList("xls", "xlsx", "csv", "zip");
+	private static final Logger LOG = LoggerFactory.getLogger(EmxImportService.class);
 
 	private final MetaDataParser parser;
 	private final ImportWriter writer;
-	private MysqlRepositoryCollection targetCollection;
-	private WritableMetaDataService metaDataService;
+	private final DataService dataService;
 
 	@Autowired
-	public EmxImportService(MetaDataParser parser, ImportWriter writer)
+	public EmxImportService(MetaDataParser parser, ImportWriter writer, DataService dataService)
 	{
 		if (parser == null) throw new IllegalArgumentException("parser is null");
 		if (writer == null) throw new IllegalArgumentException("writer is null");
-		logger.debug("EmxImportService created");
+		LOG.debug("EmxImportService created");
 		this.parser = parser;
 		this.writer = writer;
-	}
-
-	@Autowired
-	public void setRepositoryCollection(MysqlRepositoryCollection targetCollection,
-			WritableMetaDataService metaDataService)
-	{
-		this.targetCollection = targetCollection;
-		this.metaDataService = metaDataService;
-		logger.debug("EmxImportService created with targetCollection=" + targetCollection + " and metaDataService="
-				+ metaDataService);
+		this.dataService = dataService;
 	}
 
 	@Override
 	public boolean canImport(File file, RepositoryCollection source)
 	{
 		String fileNameExtension = StringUtils.getFilenameExtension(file.getName());
-		if (SUPPORTED_FILE_EXTENSIONS.contains(fileNameExtension.toLowerCase()))
+		if (GenericImporterExtensions.getEMX().contains(fileNameExtension.toLowerCase()))
 		{
 			for (String entityName : source.getEntityNames())
 			{
 				if (entityName.equalsIgnoreCase(EmxMetaDataParser.ATTRIBUTES)) return true;
-				if (targetCollection.getRepositoryByEntityName(entityName) != null) return true;
+				if (dataService.getMeta().getEntityMetaData(entityName) != null) return true;
+				if (canImportByHeuristic(entityName)) return true;
 			}
 		}
 
 		return false;
 	}
 
+	private boolean canImportByHeuristic(String entityName)
+	{
+		// entity is importable if entity name is the simple name of an existing entity,
+		// and only one entity with this simple name exists
+		List<EntityMetaData> entityMetaDatas = new ArrayList<>();
+		for (EntityMetaData entityMetaData : dataService.getMeta().getEntityMetaDatas())
+		{
+			if (entityName.equals(entityMetaData.getSimpleName()))
+			{
+				entityMetaDatas.add(entityMetaData);
+			}
+		}
+		return entityMetaDatas.size() == 1;
+	}
+
 	@Override
 	public EntityImportReport doImport(final RepositoryCollection source, DatabaseAction databaseAction)
 	{
-		if (targetCollection == null) throw new RuntimeException("targetCollection was not set");
-		if (metaDataService == null) throw new RuntimeException("metadataService was not set");
-
 		ParsedMetaData parsedMetaData = parser.parse(source);
 
 		// TODO altered entities (merge, see getEntityMetaData)
-		return doImport(new EmxImportJob(databaseAction, source, parsedMetaData, targetCollection));
-
+		return doImport(new EmxImportJob(databaseAction, source, parsedMetaData));
 	}
 
 	/**
@@ -93,12 +96,19 @@ public class EmxImportService implements ImportService
 		}
 		catch (Exception e)
 		{
-			writer.rollbackSchemaChanges(job);
+			LOG.error("Error handling EmxImportJob", e);
+			try
+			{
+				writer.rollbackSchemaChanges(job);
+			}
+			catch (Exception ignore)
+			{
+			}
 			throw e;
 		}
 		finally
 		{
-			metaDataService.refreshCaches();
+			dataService.getMeta().refreshCaches();
 		}
 	}
 
@@ -126,4 +136,9 @@ public class EmxImportService implements ImportService
 		return false;
 	}
 
+	@Override
+	public Set<String> getSupportedFileExtensions()
+	{
+		return GenericImporterExtensions.getEMX();
+	}
 }

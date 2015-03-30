@@ -29,6 +29,13 @@
     var genomeBrowserSettings = {};
     var featureInfoMap = {};
 
+    $(document).on('dataChange.diseasematcher', function(e) {
+    	if (e.namespace !== 'data'){
+    		//TODO: implement refresh table functionality
+        	$('#data-table-container').table('setQuery', getQuery());
+    	}
+	});
+    
     /**
 	 * @memberOf molgenis.dataexplorer.data
 	 */
@@ -51,9 +58,13 @@
 		$('#data-table-container').table({
 			'entityMetaData' : getEntity(),
 			'attributes' : attributes,
+			'maxRows' : 18,
 			'query' : getQuery(),
 			'editable' : editable,
-			'rowClickable': rowClickable
+			'rowClickable': rowClickable,
+			'onDataChange' : function(){
+				$(document).trigger('dataChange.data');
+			}
 		});
 	}
 	
@@ -91,7 +102,7 @@
 		$.each(colAttributes, function() {
 			var feature = this;
 			dataRequest.attributeNames.push(feature.name);
-			if (feature.fieldType === 'XREF' || feature.fieldType === 'MREF')
+			if (feature.fieldType === 'XREF' || feature.fieldType === 'MREF' || feature.fieldType === 'CATEGORICAL' || feature.fieldType === 'CATEGORICAL_MREF')
 				dataRequest.attributeNames.push("key-" + feature.name);
 		});
 
@@ -103,8 +114,8 @@
 	 * @memberOf molgenis.dataexplorer.data
 	 */
 	function doShowGenomeBrowser() {
-		return genomebrowserStartAttribute !== undefined &&
-            genomebrowserChromosomeAttribute !== undefined;
+		// dalliance is not compatible with IE9
+		return molgenis.ie9 !== true && genomebrowserStartAttribute !== undefined && genomebrowserChromosomeAttribute !== undefined && molgenis.dataexplorer.settings["genomebrowser"] !== 'false';
 	}
 
     function getAttributeFromList(attributesString){
@@ -125,7 +136,7 @@
 	 */
 	function createGenomeBrowser(specificSettings) {
         var showHighlight = false;
-        if(specificSettings != null) {
+        if(specificSettings !== null) {
             showHighlight = specificSettings.highlightRegion;
         }
 		var settings = $.extend(true, {}, genomeBrowserSettings, specificSettings || {});
@@ -163,7 +174,7 @@
         if(showHighlight === true) {
             genomeBrowser.highlightRegion(genomeBrowser.chr, (genomeBrowser.viewStart + 9990), (genomeBrowser.viewEnd - 9990));
         }
-        genomeBrowser.addFeatureInfoPlugin(function(f, info){createGenomeBrowserInfoPopup(f, info, entity)});
+        genomeBrowser.addFeatureInfoPlugin(function(f, info){createGenomeBrowserInfoPopup(f, info, entity);});
 	}
 
     function createGenomeBrowserInfoPopup(f, info, entity) {
@@ -176,10 +187,12 @@
         }
         else{
             var molgenisIndex = f.notes.indexOf("source:MOLGENIS");
-            if(info.feature.score==="0.0")
+            if(info.feature.score==="0.0") {
                 info.feature.score = undefined;
-            if(info.feature.method==="not_recorded")
+            }
+            if(info.feature.method==="not_recorded") {
                 info.feature.method = undefined;
+            }
 
             var selectedTrack = false;
             if(molgenisIndex!==-1){
@@ -189,7 +202,7 @@
 
                     var trackName;
                     var trackIndex = f.notes[note].indexOf("track:");
-                    if (trackIndex != -1) {
+                    if (trackIndex !== -1) {
                         trackName = f.notes[note].substr(trackIndex + 6);
                         if (entity.name === trackName) {
                             selectedTrack = true;
@@ -304,8 +317,9 @@
 	 */
 	$(function() {
 		$(document).on('changeAttributeSelection.data', function(e, data) {
-			if($('#data-table-container'))
+			if($('#data-table-container')) {
 				$('#data-table-container').table('setAttributes', data.attributes);
+			}
 		});
 
 		$(document).on('updateAttributeFilters.data', function(e, data) {
@@ -320,22 +334,24 @@
 					genomeBrowser.setLocation(chr, viewStart, viewEnd);
 				}
 			}
-			
-			// TODO implement elegant solution for genome browser specific code
-			$.each(data.filters, function() {
-				if(this.getComplexFilterElements()[0]){
-					if(this.attribute === genomebrowserStartAttribute){
-						setLocation(genomeBrowser.chr,
-								parseInt(this.getComplexFilterElements()[0].simpleFilter.fromValue),
-								parseInt(this.getComplexFilterElements()[0].simpleFilter.toValue));
+				
+			if(molgenis.dataexplorer.settings["genomebrowser"] !== 'false'){
+				// TODO implement elegant solution for genome browser specific code
+				$.each(data.filters, function() {
+					if(this.getComplexFilterElements && this.getComplexFilterElements()[0]){
+						if(this.attribute === genomebrowserStartAttribute){
+							setLocation(genomeBrowser.chr,
+									parseInt(this.getComplexFilterElements()[0].simpleFilter.fromValue),
+									parseInt(this.getComplexFilterElements()[0].simpleFilter.toValue));
+						}
+						else if(this.attribute === genomebrowserChromosomeAttribute){
+							setLocation(this.getComplexFilterElements()[0].simpleFilter.getValues()[0],
+									genomeBrowser.viewStart,
+									genomeBrowser.viewEnd);
+						}
 					}
-					else if(this.attribute === genomebrowserChromosomeAttribute){
-						setLocation(this.getComplexFilterElements()[0].simpleFilter.getValues()[0],
-								genomeBrowser.viewStart,
-								genomeBrowser.viewEnd);
-					}
-				}
-			});
+				});
+			}
 		});
 
 		$(document).on('changeQuery.data', function(e, query) {
@@ -360,6 +376,7 @@
 				}
 			}
 		});
+		
 		$('form[name=galaxy-export-form]').submit(function(e) {
 			e.preventDefault();
 			if($(this).valid()) {
@@ -380,4 +397,4 @@
 			setDallianceFilter();
 		});
 	});
-})($, window.top.molgenis = window.top.molgenis || {});
+}($, window.top.molgenis = window.top.molgenis || {}));

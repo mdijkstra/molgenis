@@ -13,13 +13,12 @@ import org.molgenis.data.DatabaseAction;
 import org.molgenis.data.Entity;
 import org.molgenis.data.RepositoryCollection;
 import org.molgenis.data.importer.EmxImportService;
-import org.molgenis.data.mysql.MysqlRepositoryCollection;
 import org.molgenis.data.support.MapEntity;
 import org.molgenis.data.support.QueryImpl;
 import org.molgenis.ontology.OntologyService;
 import org.molgenis.ontology.OntologyServiceResult;
+import org.molgenis.ontology.beans.ComparableEntity;
 import org.molgenis.ontology.repository.OntologyTermQueryRepository;
-import org.molgenis.ontology.service.OntologyServiceImpl;
 import org.molgenis.security.core.Permission;
 import org.molgenis.security.core.utils.SecurityUtils;
 import org.molgenis.security.runas.RunAsSystem;
@@ -40,8 +39,6 @@ public class ProcessInputTermService
 
 	private final EmxImportService emxImportService;
 
-	private final MysqlRepositoryCollection mysqlRepositoryCollection;
-
 	private final DataService dataService;
 
 	private final UploadProgress uploadProgress;
@@ -49,12 +46,10 @@ public class ProcessInputTermService
 	private final OntologyService ontologyService;
 
 	@Autowired
-	public ProcessInputTermService(EmxImportService emxImportService,
-			MysqlRepositoryCollection mysqlRepositoryCollection, DataService dataService,
+	public ProcessInputTermService(EmxImportService emxImportService, DataService dataService,
 			UploadProgress uploadProgress, OntologyService ontologyService)
 	{
 		this.emxImportService = emxImportService;
-		this.mysqlRepositoryCollection = mysqlRepositoryCollection;
 		this.dataService = dataService;
 		this.uploadProgress = uploadProgress;
 		this.ontologyService = ontologyService;
@@ -69,20 +64,20 @@ public class ProcessInputTermService
 		String userName = molgenisUser.getUsername();
 		uploadProgress.registerUser(userName, entityName);
 		// Add the original input dataset to database
-		mysqlRepositoryCollection.add(repositoryCollection.getRepositoryByEntityName(entityName).getEntityMetaData());
+		dataService.getMeta().addEntityMeta(repositoryCollection.getRepository(entityName).getEntityMetaData());
 		emxImportService.doImport(repositoryCollection, DatabaseAction.ADD);
-		dataService.getCrudRepository(entityName).flush();
+		dataService.getRepository(entityName).flush();
 
 		// Add a new entry in MatchingTask table for this new matching job
 		int threshold = uploadProgress.getThreshold(userName);
 		MapEntity mapEntity = new MapEntity();
-		mapEntity.set(MatchingTaskEntity.IDENTIFIER, entityName);
-		mapEntity.set(MatchingTaskEntity.DATA_CREATED, new Date());
-		mapEntity.set(MatchingTaskEntity.CODE_SYSTEM, ontologyIri);
-		mapEntity.set(MatchingTaskEntity.MOLGENIS_USER, userName);
-		mapEntity.set(MatchingTaskEntity.THRESHOLD, threshold);
-		dataService.add(MatchingTaskEntity.ENTITY_NAME, mapEntity);
-		dataService.getCrudRepository(MatchingTaskEntity.ENTITY_NAME).flush();
+		mapEntity.set(MatchingTaskEntityMetaData.IDENTIFIER, entityName);
+		mapEntity.set(MatchingTaskEntityMetaData.DATA_CREATED, new Date());
+		mapEntity.set(MatchingTaskEntityMetaData.CODE_SYSTEM, ontologyIri);
+		mapEntity.set(MatchingTaskEntityMetaData.MOLGENIS_USER, userName);
+		mapEntity.set(MatchingTaskEntityMetaData.THRESHOLD, threshold);
+		dataService.add(MatchingTaskEntityMetaData.ENTITY_NAME, mapEntity);
+		dataService.getRepository(MatchingTaskEntityMetaData.ENTITY_NAME).flush();
 		uploadProgress.registerUser(userName, entityName, (int) dataService.count(entityName, new QueryImpl()));
 		// Match input terms with code
 		Iterable<Entity> findAll = dataService.findAll(entityName);
@@ -94,23 +89,23 @@ public class ProcessInputTermService
 				OntologyServiceResult searchEntity = ontologyService.searchEntity(ontologyIri, entity);
 				for (Map<String, Object> ontologyTerm : searchEntity.getOntologyTerms())
 				{
-					Double score = Double.parseDouble(ontologyTerm.get(OntologyServiceImpl.SCORE).toString());
+					Double score = Double.parseDouble(ontologyTerm.get(ComparableEntity.SCORE).toString());
 					MapEntity matchingTaskContentEntity = new MapEntity();
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.IDENTIFIER,
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.IDENTIFIER,
 							entityName + "_" + entity.getIdValue());
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.INPUT_TERM, entity.getIdValue());
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.REF_ENTITY, entityName);
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.MATCHED_TERM,
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.INPUT_TERM, entity.getIdValue());
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.REF_ENTITY, entityName);
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.MATCHED_TERM,
 							ontologyTerm.get(OntologyTermQueryRepository.ONTOLOGY_TERM_IRI));
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.SCORE, score);
-					matchingTaskContentEntity.set(MatchingTaskContentEntity.VALIDATED, false);
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.SCORE, score);
+					matchingTaskContentEntity.set(MatchingTaskContentEntityMetaData.VALIDATED, false);
 					entitiesToAdd.add(matchingTaskContentEntity);
 					break;
 				}
 				// Add entity in batch
 				if (entitiesToAdd.size() >= ADD_BATCH_SIZE)
 				{
-					dataService.add(MatchingTaskContentEntity.ENTITY_NAME, entitiesToAdd);
+					dataService.add(MatchingTaskContentEntityMetaData.ENTITY_NAME, entitiesToAdd);
 					entitiesToAdd.clear();
 				}
 				uploadProgress.incrementProgress(userName);
@@ -118,10 +113,10 @@ public class ProcessInputTermService
 			// Add the rest
 			if (entitiesToAdd.size() != 0)
 			{
-				dataService.add(MatchingTaskContentEntity.ENTITY_NAME, entitiesToAdd);
+				dataService.add(MatchingTaskContentEntityMetaData.ENTITY_NAME, entitiesToAdd);
 				entitiesToAdd.clear();
 			}
-			dataService.getCrudRepository(MatchingTaskContentEntity.ENTITY_NAME).flush();
+			dataService.getRepository(MatchingTaskContentEntityMetaData.ENTITY_NAME).flush();
 
 			// FIXME : temporary work around to assign write permissions to the
 			// users who create the entities.
@@ -136,7 +131,7 @@ public class ProcessInputTermService
 				userAuthority.setRole(role);
 				roles.add(new SimpleGrantedAuthority(role));
 				dataService.add(UserAuthority.ENTITY_NAME, userAuthority);
-				dataService.getCrudRepository(UserAuthority.ENTITY_NAME).flush();
+				dataService.getRepository(UserAuthority.ENTITY_NAME).flush();
 			}
 			auth = new UsernamePasswordAuthenticationToken(auth.getPrincipal(), null, roles);
 			securityContext.setAuthentication(auth);

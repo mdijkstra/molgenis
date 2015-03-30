@@ -9,6 +9,7 @@ import org.molgenis.MolgenisFieldTypes.FieldTypeEnum;
 import org.molgenis.data.Entity;
 import org.molgenis.data.EntityMetaData;
 import org.molgenis.data.annotation.AnnotationService;
+import org.molgenis.data.annotation.AnnotatorUtils;
 import org.molgenis.data.annotation.HgncLocationsUtils;
 import org.molgenis.data.annotation.LocusAnnotator;
 import org.molgenis.data.annotation.impl.datastructures.Locus;
@@ -26,8 +27,7 @@ public class HgncSymbolServiceAnnotator extends LocusAnnotator
 	private final HgncLocationsProvider hgncLocationsProvider;
 
 	static final String HGNC_SYMBOL = "HGNC_SYMBOL";
-	private static final String NAME = "HGNC-SymbolAnnotator";
-    private static final String LABEL = "HGNC-Symbol";
+	private static final String NAME = "HGNC-Symbol";
 
 	@Autowired
 	public HgncSymbolServiceAnnotator(AnnotationService annotatorService, HgncLocationsProvider hgncLocationsProvider)
@@ -37,19 +37,12 @@ public class HgncSymbolServiceAnnotator extends LocusAnnotator
 	}
 
 	@Override
-	public String getName()
+	public String getSimpleName()
 	{
 		return NAME;
 	}
 
 	@Override
-	public String getLabel()
-	{
-		return LABEL;
-	}
-
-
-    @Override
 	protected boolean annotationDataExists()
 	{
 		// FIXME Check if web service is available
@@ -68,7 +61,7 @@ public class HgncSymbolServiceAnnotator extends LocusAnnotator
 				.get(0));
 
 		List<Entity> results = new ArrayList<Entity>();
-		results.add(getAnnotatedEntity(entity, resultMap));
+		results.add(AnnotatorUtils.getAnnotatedEntity(this, entity, resultMap));
 
 		return results;
 	}
@@ -80,5 +73,11 @@ public class HgncSymbolServiceAnnotator extends LocusAnnotator
 		metadata.addAttributeMetaData(new DefaultAttributeMetaData(HGNC_SYMBOL, FieldTypeEnum.STRING));
 
 		return metadata;
+	}
+
+	@Override
+	public String getDescription()
+	{
+		return "This is the description for the HGNC Annotator";
 	}
 }

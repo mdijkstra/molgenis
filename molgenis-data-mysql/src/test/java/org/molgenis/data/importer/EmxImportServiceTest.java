@@ -1,23 +1,23 @@
 package org.molgenis.data.importer;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.molgenis.AppConfig;
-import org.molgenis.MolgenisFieldTypes;
-import org.molgenis.data.DataService;
 import org.molgenis.data.DatabaseAction;
+import org.molgenis.data.Entity;
 import org.molgenis.data.excel.ExcelRepositoryCollection;
 import org.molgenis.data.meta.MetaDataServiceImpl;
-import org.molgenis.data.mysql.MysqlRepository;
 import org.molgenis.data.mysql.MysqlRepositoryCollection;
 import org.molgenis.data.semantic.UntypedTagService;
-import org.molgenis.data.support.DefaultEntityMetaData;
+import org.molgenis.data.support.DataServiceImpl;
 import org.molgenis.framework.db.EntitiesValidationReport;
 import org.molgenis.framework.db.EntityImportReport;
 import org.molgenis.security.permission.PermissionSystemService;
@@ -32,13 +32,15 @@ import org.testng.annotations.Test;
 /**
  * Integration tests for the entire EMX importer.
  */
+@Test
 @ContextConfiguration(classes = AppConfig.class)
 public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 {
 	@Autowired
 	MysqlRepositoryCollection store;
 
-	DataService dataService;
+	@Autowired
+	DataServiceImpl dataService;
 
 	@Autowired
 	PermissionSystemService permissionSystemService;
@@ -52,8 +54,14 @@ public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 	@BeforeMethod
 	public void beforeMethod()
 	{
-		metaDataService.recreateMetaDataRepositories();
-		dataService = mock(DataService.class);
+		if (dataService.hasRepository("import_person"))
+		{
+			dataService.deleteAll("import_person");
+		}
+		if (dataService.hasRepository("import_city"))
+		{
+			dataService.deleteAll("import_city");
+		}
 	}
 
 	@Test
@@ -64,9 +72,8 @@ public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 		ExcelRepositoryCollection source = new ExcelRepositoryCollection(f);
 
 		// create importer
-		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService, metaDataService),
-				new ImportWriter(dataService, metaDataService, permissionSystemService, tagService));
-		importer.setRepositoryCollection(store, metaDataService);
+		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService), new ImportWriter(
+				dataService, permissionSystemService, tagService), dataService);
 
 		// generate report
 		EntitiesValidationReport report = importer.validateImport(f, source);
@@ -111,17 +118,39 @@ public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 		ExcelRepositoryCollection source = new ExcelRepositoryCollection(f);
 
 		Assert.assertEquals(source.getNumberOfSheets(), 4);
-		Assert.assertNotNull(source.getRepositoryByEntityName("attributes"));
+		Assert.assertNotNull(source.getRepository("attributes"));
 
-		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService, metaDataService),
-				new ImportWriter(dataService, metaDataService, permissionSystemService, tagService));
-		importer.setRepositoryCollection(store, metaDataService);
+		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService), new ImportWriter(
+				dataService, permissionSystemService, tagService), dataService);
 
 		// test import
 		EntityImportReport report = importer.doImport(source, DatabaseAction.ADD);
+		
+		// Check children
+		List<Entity> entitiesWithChildern = (List<Entity>) StreamSupport
+				.stream(dataService.getRepository("import_person").spliterator(), false)
+				.filter(e -> e.getEntities("children").iterator().hasNext())
+				.collect(Collectors.toCollection(ArrayList::new));
+		Assert.assertEquals(new Integer(entitiesWithChildern.size()), new Integer(1));
+		Iterator<Entity> children = entitiesWithChildern.get(0).getEntities("children").iterator();
+		Assert.assertEquals(children.next().getIdValue(), "john");
+		Assert.assertEquals(children.next().getIdValue(), "jane");
+
+		// Check parents
+		List<Entity> entitiesWithParents = (List<Entity>) StreamSupport
+				.stream(dataService.getRepository("import_person").spliterator(), false)
+				.filter(e -> e.getEntities("parent").iterator().hasNext())
+				.collect(Collectors.toCollection(ArrayList::new));
+		Entity parent1 = entitiesWithParents.get(0).getEntity("parent");
+		Assert.assertEquals(parent1.getIdValue().toString(), "john");
+		Entity parent2 = entitiesWithParents.get(1).getEntity("parent");
+		Assert.assertEquals(parent2.getIdValue().toString(), "jane");
+		Entity parent3 = entitiesWithParents.get(2).getEntity("parent");
+		Assert.assertEquals(parent3.getIdValue().toString(), "geofrey");
 
 		// test report
 		Assert.assertEquals(report.getNrImportedEntitiesMap().get("import_city"), new Integer(2));
+		Assert.assertEquals(report.getNrImportedEntitiesMap().get("import_person"), new Integer(3));
 		Assert.assertEquals(report.getNrImportedEntitiesMap().get("import_person"), new Integer(3));
 
 	}
@@ -129,38 +158,13 @@ public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 	@Test
 	public void testImportReportNoMeta() throws IOException, InvalidFormatException, InterruptedException
 	{
-		MysqlRepository repositoryCity = mock(MysqlRepository.class);
-		DefaultEntityMetaData entityMetaDataCity = new DefaultEntityMetaData("import_city");
-		entityMetaDataCity.addAttribute("name").setIdAttribute(true).setNillable(false);
-		when(dataService.getRepositoryByEntityName("import_city")).thenReturn(repositoryCity);
-		when(repositoryCity.getEntityMetaData()).thenReturn(entityMetaDataCity);
-
-		MysqlRepository repositoryPerson = mock(MysqlRepository.class);
-		DefaultEntityMetaData entityMetaDataPerson = new DefaultEntityMetaData("import_person");
-		entityMetaDataPerson.addAttribute("firstName").setIdAttribute(true).setNillable(false);
-		entityMetaDataPerson.addAttribute("lastName");
-		entityMetaDataPerson.addAttribute("height").setDataType(MolgenisFieldTypes.INT);
-		entityMetaDataPerson.addAttribute("active").setDataType(MolgenisFieldTypes.BOOL);
-		entityMetaDataPerson.addAttribute("children").setDataType(MolgenisFieldTypes.MREF)
-				.setRefEntity(entityMetaDataPerson);
-		entityMetaDataPerson.addAttribute("birthplace").setDataType(MolgenisFieldTypes.XREF)
-				.setRefEntity(entityMetaDataCity);
-
-		when(dataService.getRepositoryByEntityName("import_person")).thenReturn(repositoryPerson);
-		when(repositoryPerson.getEntityMetaData()).thenReturn(entityMetaDataPerson);
-
-		// cleanup
-		store.dropEntityMetaData("import_person");
-		store.dropEntityMetaData("import_city");
-		store.dropEntityMetaData("import_country");
 
 		// create test excel
 		File f = ResourceUtils.getFile(getClass(), "/example.xlsx");
 		ExcelRepositoryCollection source = new ExcelRepositoryCollection(f);
 
-		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService, metaDataService),
-				new ImportWriter(dataService, metaDataService, permissionSystemService, tagService));
-		importer.setRepositoryCollection(store, metaDataService);
+		EmxImportService importer = new EmxImportService(new EmxMetaDataParser(dataService), new ImportWriter(
+				dataService, permissionSystemService, tagService), dataService);
 
 		// test import
 		importer.doImport(source, DatabaseAction.ADD);
@@ -174,6 +178,5 @@ public class EmxImportServiceTest extends AbstractTestNGSpringContextTests
 
 		Assert.assertEquals(report.getNrImportedEntitiesMap().get("import_city"), new Integer(4));
 		Assert.assertEquals(report.getNrImportedEntitiesMap().get("import_person"), new Integer(4));
-
 	}
 }
